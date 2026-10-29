@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Emergency BFF — vanilla demo</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 2rem;
+        max-width: 60rem;
+      }
+      button {
+        padding: 0.5rem 1rem;
+        margin: 0.25rem;
+        cursor: pointer;
+      }
+      pre {
+        background: #111;
+        color: #d4f7d4;
+        padding: 1rem;
+        overflow: auto;
+        min-height: 12rem;
+      }
+      .row {
+        margin: 1rem 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Emergency BFF — vanilla PHP demo</h1>
+    <p>
+      The page talks only to the BFF. The BFF talks to the mock DataEmergencia
+      API.
+    </p>
+
+    <div class="row">
+      <label>Identity code <input id="code" value="DABC12" size="10" /></label>
+    </div>
+
+    <div class="row">
+      <button data-action="session">1. Start session</button>
+      <button data-action="current">2. Current</button>
+      <button data-action="activate">3. Activate</button>
+      <button data-action="simulacrum">4. Simulacrum</button>
+      <button data-action="abort">5. Abort</button>
+    </div>
+
+    <h2>Log</h2>
+    <pre id="log"></pre>
+
+    <script>
+      const prefix = '/de-bff/emergency';
+      let csrfToken = null;
+      let emergencyId = null;
+      const log = (label, data) => {
+        const node = document.getElementById('log');
+        node.textContent += `\n[${label}]\n${JSON.stringify(data, null, 2)}\n`;
+        node.scrollTop = node.scrollHeight;
+      };
+
+      const call = async (method, path, body) => {
+        const headers = { Accept: 'application/json' };
+        if (body !== undefined) headers['Content-Type'] = 'application/json';
+        if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+
+        const response = await fetch(prefix + path, {
+          method,
+          headers,
+          credentials: 'same-origin',
+          body: body === undefined ? undefined : JSON.stringify(body),
+        });
+        const payload = response.status === 204 ? null : await response.json();
+        if (!response.ok)
+          throw new Error(`${response.status} ${JSON.stringify(payload)}`);
+        return payload;
+      };
+
+      document.querySelectorAll('button[data-action]').forEach((button) => {
+        button.addEventListener('click', async () => {
+          try {
+            const code = document.getElementById('code').value.trim();
+
+            if (button.dataset.action === 'session') {
+              const config = await call('GET', '/config');
+              csrfToken = config.csrf_token;
+              log('config', config);
+              const session = await call('POST', '/session', { code });
+              csrfToken = session.csrf_token;
+              log('session', session);
+            }
+
+            if (button.dataset.action === 'current') {
+              const current = await call('GET', '/current');
+              if (current.active) emergencyId = current.emergency.emergency_id;
+              log('current', current);
+            }
+
+            if (button.dataset.action === 'activate') {
+              const result = await call('POST', '/activate', {
+                geolocation: { latitude: 4.711, longitude: -74.0721 },
+              });
+              emergencyId = result.emergency_id;
+              log('activate', result);
+            }
+
+            if (button.dataset.action === 'simulacrum') {
+              log('simulacrum', await call('POST', '/simulacrum'));
+            }
+
+            if (button.dataset.action === 'abort') {
+              if (!emergencyId) throw new Error('Activate first');
+              log('abort', await call('DELETE', `/${emergencyId}`));
+              emergencyId = null;
+            }
+          } catch (error) {
+            log('error', String(error));
+          }
+        });
+      });
+    </script>
+  </body>
+</html>

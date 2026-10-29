@@ -1,0 +1,39 @@
+{
+  "to": "573001234567",
+  "template": "simulacrum_support_contacts_confirmation_v2",
+  "language": "en",
+  "google_maps": null,
+  "components": [
+    {
+      "type": "header",
+      "parameters": [
+        {
+          "type": "image",
+          "image": {
+            "link": "https://api.dataemergencia.com/public/images/logo_scaem.png"
+          }
+        }
+      ]
+    },
+    {
+      "type": "body",
+      "parameters": [
+        {
+          "type": "text",
+          "parameter_name": "contact_name",
+          "text": "Grace Hopper"
+        },
+        {
+          "type": "text",
+          "parameter_name": "user_name",
+          "text": "Ada Lovelace"
+        },
+        {
+          "type": "text",
+          "parameter_name": "medical_profile_url",
+          "text": "https://zur.dataemergencia.com/qr/DABC12"
+        }
+      ]
+    }
+  ]
+}

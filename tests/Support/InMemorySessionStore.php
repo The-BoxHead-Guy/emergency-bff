@@ -1,0 +1,48 @@
+<?php
+
+declare(strict_types=1);
+
+namespace DataEmergencia\EmergencyBff\Tests\Support;
+
+use DataEmergencia\EmergencyBff\Session\SessionStore;
+
+/**
+ * Session store that behaves like native sessions without touching headers.
+ */
+final class InMemorySessionStore implements SessionStore
+{
+    /**
+     * @var array<string, mixed>
+     */
+    public array $data = [];
+
+    public int $regenerations = 0;
+
+    public int $destroys = 0;
+
+    public function get(string $key, mixed $default = null): mixed
+    {
+        return $this->data[$key] ?? $default;
+    }
+
+    public function set(string $key, mixed $value): void
+    {
+        $this->data[$key] = $value;
+    }
+
+    public function remove(string $key): void
+    {
+        unset($this->data[$key]);
+    }
+
+    public function regenerate(): void
+    {
+        $this->regenerations++;
+    }
+
+    public function destroy(): void
+    {
+        $this->destroys++;
+        $this->data = [];
+    }
+}

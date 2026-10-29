@@ -1,0 +1,17 @@
+{
+  "to": "573001234567",
+  "template": "emergency_status_aborting_v1",
+  "language": "en",
+  "components": [
+    {
+      "type": "body",
+      "parameters": [
+        {
+          "type": "text",
+          "parameter_name": "user_name",
+          "text": "Ada Lovelace"
+        }
+      ]
+    }
+  ]
+}

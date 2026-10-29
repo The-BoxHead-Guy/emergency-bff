@@ -1,0 +1,28 @@
+{
+  "data": {
+    "id": "1",
+    "type": "fmd",
+    "attributes": {
+      "data": {
+        "personal_info": {
+          "full_name": "Ada Lovelace",
+          "blood_type": "O+"
+        },
+        "product_codes": {
+          "dte_d": "DABC12"
+        },
+        "emergency_info": [
+          {
+            "name": "Grace Hopper",
+            "phones": [
+              {
+                "area_code": "+57",
+                "number": "3001234567"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

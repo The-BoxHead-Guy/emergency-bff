@@ -1,0 +1,259 @@
+{
+  "info": {
+    "_postman_id": "e7f3a1c2-5b4d-4e8f-9a01-2c3d4e5f6a7b",
+    "name": "Emergency BFF",
+    "description": "Session, current, activate, simulation, refresh and abort against a running emergency BFF.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8080/de-bff/emergency"
+    },
+    {
+      "key": "code",
+      "value": "DABC12"
+    },
+    {
+      "key": "csrfToken",
+      "value": ""
+    },
+    {
+      "key": "emergencyId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["health"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is ok', () => pm.response.to.have.jsonBody('status', 'ok'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Config (captures CSRF)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/config",
+          "host": ["{{baseUrl}}"],
+          "path": ["config"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "pm.collectionVariables.set('csrfToken', body.csrf_token);",
+              "pm.test('has CSRF token', () => pm.expect(body.csrf_token).to.be.a('string').and.not.empty);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Session",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"code\":\"{{code}}\"}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/session",
+          "host": ["{{baseUrl}}"],
+          "path": ["session"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "pm.collectionVariables.set('csrfToken', body.csrf_token);",
+              "pm.test('session created', () => pm.response.to.have.status(201));",
+              "pm.test('code matches', () => pm.expect(body.code).to.eql(pm.collectionVariables.get('code')));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Current",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/current",
+          "host": ["{{baseUrl}}"],
+          "path": ["current"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "if (body.emergency && body.emergency.emergency_id) {",
+              "  pm.collectionVariables.set('emergencyId', body.emergency.emergency_id);",
+              "}",
+              "pm.test('current returned', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Simulation",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/simulacrum",
+          "host": ["{{baseUrl}}"],
+          "path": ["simulacrum"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('simulation did not create an emergency', () => {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.simulated).to.eql(true);",
+              "  pm.expect(body.emergency_id).to.eql(null);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Activate",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"geolocation\":{\"latitude\":4.711,\"longitude\":-74.0721}}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/activate",
+          "host": ["{{baseUrl}}"],
+          "path": ["activate"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.response.json();",
+              "pm.collectionVariables.set('emergencyId', body.emergency_id || '');",
+              "pm.test('activation created an emergency', () => pm.response.to.have.status(201));",
+              "pm.test('has emergency id', () => pm.expect(body.emergency_id).to.be.a('string').and.not.empty);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Refresh",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/{{emergencyId}}/refresh",
+          "host": ["{{baseUrl}}"],
+          "path": ["{{emergencyId}}", "refresh"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('refresh returned the emergency', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Abort",
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "X-CSRF-Token", "value": "{{csrfToken}}" }],
+        "url": {
+          "raw": "{{baseUrl}}/{{emergencyId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["{{emergencyId}}"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('abort deleted the emergency', () => {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.deleted).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

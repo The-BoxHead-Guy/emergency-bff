@@ -1,0 +1,7 @@
+/vendor/
+composer.lock
+.env
+.env.local
+.phpunit.result.cache
+.phpunit.cache/
+/coverage/

@@ -1,0 +1,25 @@
+{
+  "name": "dataemergencia/emergency-bff-example",
+  "description": "Vanilla PHP example for the DataEmergencia emergency BFF.",
+  "type": "project",
+  "license": "MIT",
+  "repositories": [
+    {
+      "type": "path",
+      "url": "../..",
+      "options": {
+        "symlink": true,
+        "versions": {
+          "dataemergencia/emergency-bff": "0.1.0"
+        }
+      }
+    }
+  ],
+  "require": {
+    "php": "^8.4",
+    "dataemergencia/emergency-bff": "^0.1"
+  },
+  "config": {
+    "sort-packages": true
+  }
+}

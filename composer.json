@@ -1,0 +1,48 @@
+{
+  "name": "dataemergencia/emergency-bff",
+  "description": "Backend-for-frontend for the DataEmergencia emergency module.",
+  "type": "library",
+  "license": "MIT",
+  "keywords": [
+    "dataemergencia",
+    "emergency",
+    "bff",
+    "whatsapp"
+  ],
+  "require": {
+    "php": "^8.4",
+    "ext-curl": "*",
+    "ext-json": "*",
+    "ext-mbstring": "*",
+    "guzzlehttp/guzzle": "^7.9",
+    "psr/http-client": "^1.0",
+    "psr/http-factory": "^1.1",
+    "psr/http-message": "^2.0",
+    "psr/log": "^3.0"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^11.5"
+  },
+  "autoload": {
+    "psr-4": {
+      "DataEmergencia\\EmergencyBff\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "DataEmergencia\\EmergencyBff\\Tests\\": "tests/"
+    }
+  },
+  "support": {
+    "source": "https://github.com/The-BoxHead-Guy/emergency-bff",
+    "issues": "https://github.com/The-BoxHead-Guy/emergency-bff/issues"
+  },
+  "scripts": {
+    "test": "phpunit"
+  },
+  "config": {
+    "sort-packages": true
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
+}

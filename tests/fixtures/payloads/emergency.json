@@ -1,0 +1,48 @@
+{
+  "to": "573001234567",
+  "template": "emergency_message_template_v3",
+  "language": "en",
+  "google_maps": {
+    "latitude": "4.7110",
+    "longitude": "-74.0721",
+    "zoom": 17
+  },
+  "components": [
+    {
+      "type": "header",
+      "parameters": [
+        {
+          "type": "image",
+          "image": {
+            "link": "https://api.dataemergencia.com/public/images/panic-button/emergency-template.png"
+          }
+        }
+      ]
+    },
+    {
+      "type": "body",
+      "parameters": [
+        {
+          "type": "text",
+          "parameter_name": "contact_name",
+          "text": "Grace Hopper"
+        },
+        {
+          "type": "text",
+          "parameter_name": "user_name",
+          "text": "Ada Lovelace"
+        },
+        {
+          "type": "text",
+          "parameter_name": "full_date",
+          "text": "28 de Octubre de 2026, 12:35pm"
+        },
+        {
+          "type": "text",
+          "parameter_name": "fmd_url",
+          "text": "https://zur.dataemergencia.com/qr/DABC12"
+        }
+      ]
+    }
+  ]
+}

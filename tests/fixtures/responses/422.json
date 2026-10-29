@@ -1,0 +1,7 @@
+{
+  "message": "The given data was invalid.",
+  "code": "validation_error",
+  "errors": {
+    "initiator_id": ["The initiator id is invalid."]
+  }
+}
