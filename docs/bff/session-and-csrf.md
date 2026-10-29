@@ -41,8 +41,8 @@ X-CSRF-Token: <token>
 The token is also accepted in the JSON body as `csrf_token`. The package uses a
 64-character token and constant-time comparison.
 
-The reference client keeps the token in memory and sends `X-CSRF-Token`. Do not
-store the token in `localStorage`.
+Keep the token in memory and send `X-CSRF-Token`. Do not store the token in
+`localStorage`.
 
 `POST /session` rotates the token. Discard the previous value after a successful
 session start.
@@ -127,9 +127,7 @@ raw request body.
 Register a `SessionStore` backed by the Laravel session and construct the BFF
 services with `Bootstrap` or manually. The CSRF token still comes from the BFF's
 `SessionManager`; Laravel's own CSRF middleware must not validate BFF requests.
-The client's `createCookieCsrfStrategy()` exists for hosts that expose the token
-through an `XSRF-TOKEN` cookie. The default memory strategy is enough when the
-client can call `GET /config` directly.
+Frontends should read the token from `GET /config` and keep it in memory.
 
 The BFF's CSRF manager is not replaceable in the MVP; the store is.
 

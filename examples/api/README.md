@@ -113,7 +113,7 @@ change the code or restart the BFF, start again from **Config**.
 The vanilla PHP example runs the same sequence with assertions:
 
 ```bash
-cd packages/emergency-bff/examples/vanilla-php
+cd examples/vanilla-php
 ./demo.sh
 ```
 

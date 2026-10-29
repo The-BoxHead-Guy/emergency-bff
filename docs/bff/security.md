@@ -98,22 +98,22 @@ correlate a browser report without logging the payload.
 - `POST /activate` never creates the upstream emergency when every message
   fails.
 - Abort verifies ownership against the active emergency for the session code.
-- The client requires explicit confirmation before abort and blocks simulation
-  while a real emergency is active.
-- The client never claims an emergency was sent when geolocation failed; it
-  shows the fallback phone instead.
+- The frontend should require explicit confirmation before abort and block
+  simulation while a real emergency is active.
+- The frontend should never claim an emergency was sent when geolocation
+  failed; it should show the fallback phone instead.
 
 ## Known limitation: refresh ownership
 
-In `0.1.0`, `POST /{id}/refresh` requires a valid session but does not verify
+In `0.1.1`, `POST /{id}/refresh` requires a valid session but does not verify
 that the requested emergency belongs to the session's identity code. A valid
 session could read another emergency's responder names and delivery statuses if
 it knows or guesses the emergency ID.
 
 Do not expose a single BFF instance to multiple unrelated customers until this
-is fixed. The tracking item is EBF-01 in
-[`docs/review-follow-ups.md`](../review-follow-ups.md). The client is unaffected:
-it only refreshes the ID returned by its own session.
+is fixed. The limitation is scheduled for the next patch release. A frontend
+only needs to refresh the ID returned by its own session, but the server-side
+ownership check is still required.
 
 ## Production checklist
 

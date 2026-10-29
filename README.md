@@ -1,43 +1,23 @@
 # DataEmergencia Emergency BFF
 
-Standalone backend-for-frontend for the DataEmergencia emergency module.
+Backend-for-frontend for the DataEmergencia emergency flow. It runs the
+server-side work behind an SOS activation: validating the identity code,
+coordinating the emergency contacts and keeping the upstream emergency state in
+sync. Your application owns the front controller, the web server and the
+session backend.
 
-The package exposes the `/de-bff/emergency/*` JSON API, validates the
-6-character identity code, fetches the medical profile only when an emergency
-is activated, builds WhatsApp template payloads server-side, and proxies the
-existing DataEmergencia API. It ships backend PHP only: no JavaScript, CSS or
-other frontend assets are included.
+## Recommended library
 
-## Split mapping
-
-| Location                                    | Role                                  |
-| ------------------------------------------- | ------------------------------------- |
-| `packages/emergency-bff` in the monorepo    | Source of truth                       |
-| `The-BoxHead-Guy/emergency-bff`             | Public release root (Composer source) |
-| `dataemergencia/emergency-bff` on Packagist | Published package name                |
-
-The package versions itself from Git tags: the monorepo `php-v*` tag triggers
-the split workflow, and the public repository receives the matching `v*` tag.
-`composer.json` deliberately has no `version` field. First-release and Packagist
-steps are documented in [docs/publishing.md](docs/publishing.md).
-
-## Documentation
-
-- [Documentation index](docs/README.md)
-- [Zero to panel](docs/onboarding/zero-to-panel.md)
-- [BFF configuration](docs/bff/configuration.md)
-- [API contract](docs/api-contract.md)
-- [Troubleshooting](docs/operations/troubleshooting.md)
-
-The browser panel is a separate package:
-[`@dataemergencia/emergency`](https://github.com/The-BoxHead-Guy/emergency).
+Use [`@dataemergencia/emergency`](https://github.com/The-BoxHead-Guy/emergency)
+for the browser panel. It consumes this backend and provides the user-facing SOS
+experience; this package supplies the API it needs.
 
 ## Requirements
 
-- PHP 8.4 or newer with `json`, `curl` and `mbstring`
-- Composer 2.x
+- PHP 8.4 or newer with `json`, `curl` and `mbstring`.
+- Composer 2.x.
 - A PSR-18 HTTP client, PSR-17 request/stream factories and a PSR-3 logger
-  (Guzzle and its factories are installed by default)
+  (Guzzle and its factories are installed by default).
 
 ## Install
 
@@ -45,92 +25,158 @@ The browser panel is a separate package:
 composer require dataemergencia/emergency-bff
 ```
 
-## Per-customer credentials
-
-Every customer obtains an API key and its associated application identifier
-from the DataEmergencia console. Both values are server-side only, are never
-shared between customers, and the package fails fast when either is missing
-(`ConfigurationException`).
-
 ## Configuration
 
-Configuration is read from environment variables. The same values can be
-passed explicitly to `Config::fromArray()`.
+Configuration is read from the environment. The same values can be passed
+explicitly to `Config::fromArray()`.
 
-| Variable                               | Default                          | Purpose                                     |
-| -------------------------------------- | -------------------------------- | ------------------------------------------- |
-| `EMERGENCY_BFF_API_KEY`                | — (required)                     | Bearer token for the DataEmergencia API     |
-| `EMERGENCY_BFF_APPLICATION_IDENTIFIER` | — (required)                     | `X-Application-Identifier` header           |
-| `EMERGENCY_BFF_API_ORIGIN`             | `https://api.dataemergencia.com` | Upstream API origin                         |
-| `EMERGENCY_BFF_TIMEOUT`                | `10`                             | Upstream request timeout (seconds)          |
-| `EMERGENCY_BFF_RETRY_COUNT`            | `1`                              | Retries for idempotent upstream requests    |
-| `EMERGENCY_BFF_ROUTE_PREFIX`           | `/de-bff/emergency`              | Public route prefix                         |
-| `EMERGENCY_BFF_SESSION_NAME`           | `de_bff_emergency`               | Native session cookie name                  |
-| `EMERGENCY_BFF_SESSION_TTL`            | `3600`                           | Session lifetime (seconds)                  |
-| `EMERGENCY_BFF_COOKIE_PATH`            | `/`                              | Session cookie path                         |
-| `EMERGENCY_BFF_COOKIE_SECURE`          | `true`                           | `Secure` cookie flag                        |
-| `EMERGENCY_BFF_COOKIE_HTTP_ONLY`       | `true`                           | `HttpOnly` cookie flag                      |
-| `EMERGENCY_BFF_COOKIE_SAME_SITE`       | `Lax`                            | `Strict`, `Lax` or `None`                   |
-| `EMERGENCY_BFF_PUSHER_KEY`             | —                                | Public Pusher key, exposed by `GET /config` |
-| `EMERGENCY_BFF_PUSHER_CLUSTER`         | —                                | Pusher cluster, exposed by `GET /config`    |
-| `EMERGENCY_BFF_QR_BASE_HOST`           | `zur.dataemergencia.com`         | Host used in profile QR links               |
-| `EMERGENCY_BFF_FALLBACK_ORIGIN_URL`    | `https://dataemergencia.com`     | Fallback when a QR link cannot be built     |
-| `EMERGENCY_BFF_LOCAL`                  | `false`                          | Use the local QR host                       |
+| Variable                               | Purpose                                        |
+| -------------------------------------- | ---------------------------------------------- |
+| `EMERGENCY_BFF_API_KEY`                | Per-customer API credential. Server-side only. |
+| `EMERGENCY_BFF_APPLICATION_IDENTIFIER` | Per-customer application identifier.           |
+
+Both values are issued per deployment. Keep them in the server environment and
+never commit them or expose them to the browser. If either is missing,
+`Bootstrap::create()` throws a `ConfigurationException` before serving a
+request.
+
+See the [configuration reference](docs/bff/configuration.md) for the optional
+tuning variables.
+
+## Usage
+
+The package is a library, not an application. A minimal front controller:
+
+```php
+use DataEmergencia\EmergencyBff\Http\Request;
+use DataEmergencia\EmergencyBff\Support\Bootstrap;
+
+Bootstrap::create()
+    ->handle(Request::fromGlobals())
+    ->send();
+```
+
+`public/index.php` in this package is the reference front controller.
 
 ## HTTP API
 
-All responses are JSON. Start with `GET /config` to obtain the first CSRF
-token. Every mutating request — including the first `POST /session` — requires
-that token either in the `X-CSRF-Token` header or in the `csrf_token` body
-field; `POST /session` rotates it and returns the new value. Browser requests
-with an `Origin` header must be same-origin.
+All responses are JSON. Routes are relative to the configured prefix, which is
+`/de-bff/emergency` by default. Read the CSRF token from `GET /config` and send
+it as `X-CSRF-Token` on unsafe requests; `POST /session` rotates it.
 
-| Method   | Route           | Purpose                                     |
-| -------- | --------------- | ------------------------------------------- |
-| `GET`    | `/health`       | Liveness probe                              |
-| `GET`    | `/config`       | Route prefix, realtime config, CSRF token   |
-| `POST`   | `/session`      | Validate the code and start a session       |
-| `GET`    | `/current`      | Resume the active emergency, if any         |
-| `POST`   | `/activate`     | Activate the emergency and message contacts |
-| `POST`   | `/simulacrum`   | Send the support-contact test messages      |
-| `POST`   | `/{id}/refresh` | Refresh emergency and responder state       |
-| `DELETE` | `/{id}`         | Abort the emergency                         |
+### `GET /health`
 
-```jsonc
-// POST /session  { "code": "DABC12" }
+```json
+{ "status": "ok", "service": "dataemergencia/emergency-bff" }
+```
+
+### `GET /config`
+
+Returns the route prefix, the public realtime configuration and the first CSRF
+token.
+
+```json
+{
+  "route_prefix": "/de-bff/emergency",
+  "realtime": { "mode": "public", "pusher": { "key": "…", "cluster": "…" } },
+  "csrf_token": "…"
+}
+```
+
+### `POST /session`
+
+Validates the identity code and starts a session.
+
+```json
+{ "code": "DABC12" }
+```
+
+```json
 { "code": "DABC12", "csrf_token": "…", "expires_in": 3600 }
-
-// GET /config
-{ "route_prefix": "/de-bff/emergency", "realtime": { … }, "csrf_token": "…" }
-
-// GET /current (idle)
-{ "active": false, "emergency": null, "realtime": { … } }
-
-// POST /activate  { "geolocation": { "latitude": 4.711, "longitude": -74.0721 } }
-{ "emergency_id": "…", "simulated": false, "responders": [ … ], "failures": [ … ] }
-
-// POST /{id}/refresh
-{ "emergency": { … }, "responders": [ … ] }
-
-// DELETE /{id}
-{ "emergency_id": "…", "deleted": true, "responders": [ … ] }
 ```
 
-### Curl smoke test
+### `GET /current`
 
-```bash
-B=http://127.0.0.1:8080/de-bff/emergency
-TOKEN=$(curl -s -c jar.txt "$B/config" | php -r 'echo json_decode(stream_get_contents(STDIN), true)["csrf_token"];')
-SESSION=$(curl -s -b jar.txt -c jar.txt -H "X-CSRF-Token: $TOKEN" \
-  -H 'Content-Type: application/json' -d '{"code":"DABC12"}' "$B/session")
-TOKEN=$(printf '%s' "$SESSION" | php -r 'echo json_decode(stream_get_contents(STDIN), true)["csrf_token"];')
-curl -s -b jar.txt -H "X-CSRF-Token: $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"geolocation":{"latitude":4.711,"longitude":-74.0721}}' "$B/activate"
-curl -s -b jar.txt "$B/current"
+Returns the active emergency for the session, or `"active": false` when there
+is none.
+
+```json
+{
+  "active": true,
+  "emergency": {
+    "emergency_id": "EMG123456",
+    "is_active": true,
+    "is_simulated": false,
+    "responders": []
+  },
+  "realtime": { "mode": "public", "pusher": { "…": "…" } }
+}
 ```
 
-Errors use one envelope and always carry the same id as the `X-Request-Id`
-response header:
+### `POST /activate`
+
+Activates the emergency and messages the emergency contacts.
+
+```json
+{ "geolocation": { "latitude": 4.711, "longitude": -74.0721 } }
+```
+
+```json
+{
+  "emergency_id": "EMG123456",
+  "simulated": false,
+  "responders": [
+    {
+      "phone": "573001234567",
+      "name": "Grace Hopper",
+      "sent": true,
+      "delivered": false,
+      "read": false,
+      "failed": false,
+      "message_id": "wamid.…"
+    }
+  ],
+  "failures": [],
+  "partial_failure": false,
+  "total_failure": false
+}
+```
+
+### `POST /simulacrum`
+
+Sends the simulation messages to the emergency contacts. The response has the
+same shape as activation with `"simulated": true` and `"emergency_id": null`.
+It never creates an emergency.
+
+### `POST /{id}/refresh`
+
+Returns the current upstream state for an emergency.
+
+```json
+{
+  "emergency": { "emergency_id": "EMG123456" },
+  "responders": []
+}
+```
+
+### `DELETE /{id}`
+
+Aborts the emergency and clears the session state.
+
+```json
+{
+  "emergency_id": "EMG123456",
+  "simulated": false,
+  "responders": [],
+  "failures": [],
+  "partial_failure": false,
+  "total_failure": false,
+  "deleted": true
+}
+```
+
+Errors use one envelope and carry the same id as the `X-Request-Id` response
+header:
 
 ```json
 {
@@ -143,98 +189,48 @@ response header:
 }
 ```
 
-Known error codes: `validation_failed`, `invalid_code`, `inactive_code`,
-`unauthenticated`, `csrf_failed`, `cross_origin_denied`, `rate_limited`,
-`not_found`, `method_not_allowed`, `emergency_already_active`,
-`emergency_forbidden`, `emergency_not_found`, `missing_emergency_contacts`,
-`missing_medical_profile`, `whatsapp_delivery_failed`, `upstream_error`,
-`internal_error`.
-
 ## Host integration
 
-The simplest host uses `Bootstrap::create()`, which wires native sessions,
-Guzzle, the payload builder and the emergency service:
+`Bootstrap::create()` wires native sessions, Guzzle, the payload builder and the
+emergency service. Hosts that own their framework can construct `Kernel`
+directly and replace any collaborator:
 
-```php
-use DataEmergencia\EmergencyBff\Http\Request;
-use DataEmergencia\EmergencyBff\Support\Bootstrap;
-
-$kernel = Bootstrap::create();
-$kernel->handle(Request::fromGlobals())->send();
-```
-
-`public/index.php` in this package is exactly that front controller.
-
-Hosts that own their framework can construct `Kernel` directly and replace any
-of its collaborators:
-
-- **Session storage** — implement `SessionStore` (`get`, `set`, `remove`,
-  `regenerate`, `destroy`) and pass it to `SessionManager`. The default
-  `NativeSessionStore` issues a `de_bff_emergency` cookie with `HttpOnly`,
-  `Secure`, `SameSite=Lax` and `Path=/`. A host adapter must preserve those
-  flags; the kernel never sets the session cookie itself.
+- **Session storage** — implement `SessionStore` and pass it to `SessionManager`.
 - **Upstream transport** — implement `ApiClient` or inject any PSR-18 client
   through `Psr18ApiClient`.
 - **Profiles, emergencies and WhatsApp** — `ProfileRepository`,
-  `EmergencyRepository` and `WhatsAppClient` can be replaced by host-specific
-  implementations with the same behaviour.
+  `EmergencyRepository` and `WhatsAppClient` are replaceable.
 - **Logging** — pass a PSR-3 logger. Tokens and API keys are never logged.
-
-### Apache
-
-```apache
-DocumentRoot /path/to/app/public
-
-<Directory /path/to/app/public>
-    AllowOverride All
-    Require all granted
-</Directory>
-```
-
-with the shipped `public/.htaccess` rewriting every non-file request to
-`index.php`.
-
-### Nginx
-
-```nginx
-server {
-    root /path/to/app/public;
-
-    location / {
-        try_files $uri /index.php$is_args$args;
-    }
-
-    location ~ \.php$ {
-        include fastcgi_params;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        fastcgi_pass unix:/run/php/php8.4-fpm.sock;
-    }
-}
-```
 
 ## Realtime
 
-`GET /config` returns public Pusher credentials and the channel pattern
-`whatsapp.{phone}` (leading `+` stripped). Only public channels are supported in
-the MVP: message delivery updates are not authenticated, so treat them as
-display-only state and keep the authoritative state in `GET /current` and
-`POST /{id}/refresh`. The Pusher secret is never read or exposed, and
-`/pusher/auth` is reserved but not implemented.
+Realtime delivery updates require two environment variables:
+
+```dotenv
+EMERGENCY_BFF_PUSHER_KEY=public-key
+EMERGENCY_BFF_PUSHER_CLUSTER=us2
+```
+
+The package exposes only the public key and cluster; the Pusher secret is never
+read. Channels are public and carry metadata only, so treat their events as
+hints and reconcile through `GET /current` or `POST /{id}/refresh`.
 
 ## Example
 
-`examples/vanilla-php` installs this package through a Composer path repository
-and runs a dependency-free browser demo against a local mock API. See its
-README for the two-server command sequence.
+`examples/vanilla-php` contains a dependency-free demo and a mock upstream. See
+its README for the two-server command sequence.
 
 ## Tests
 
 ```bash
 composer validate --strict
 composer install
-find src examples public -name '*.php' -print0 | xargs -0 -n1 php -l
-vendor/bin/phpunit
+composer test
 ```
+
+## Documentation
+
+Start at the [documentation index](docs/README.md).
 
 ## License
 

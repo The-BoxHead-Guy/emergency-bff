@@ -79,7 +79,7 @@ The `X-CSRF-Token` header (or `csrf_token` body field) is missing or stale.
 
 - `POST /session` rotates the token. Read the new token from the response and
   use it for subsequent writes.
-- The client fetches a token from `GET /config` before the first write.
+- Fetch a token from `GET /config` before the first write.
 - Two tabs share a session; the last tab to start a session invalidates the
   other tab's token. Reload the stale tab.
 - A Laravel host using its own CSRF middleware must forward the BFF token, not
@@ -129,7 +129,7 @@ invalid recipient numbers or template approval problems. The person can retry
 or use the fallback phone number.
 
 Partial failure is different: activation succeeds and the response lists
-failed responders. The client surfaces the partial failure and keeps the
+failed responders. The frontend should surface the partial failure and keep the
 emergency active.
 
 ## `429 rate_limited`

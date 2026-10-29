@@ -8,12 +8,8 @@ Applies to: vanilla PHP and Laravel integrators.
 composer require dataemergencia/emergency-bff
 ```
 
-The package is published on Packagist from the public split repository
-[`The-BoxHead-Guy/emergency-bff`](https://github.com/The-BoxHead-Guy/emergency-bff).
-Composer installs the library under `vendor/dataemergencia/emergency-bff`.
-
-The package is backend-only. It ships no JavaScript, CSS, images or public
-assets, and it does not write to your document root.
+Composer installs the library under `vendor/dataemergencia/emergency-bff`. The
+package does not write to your document root.
 
 ## Create the front controller
 
@@ -59,27 +55,6 @@ X-Request-Id: 4f6c2a1b8e3d9a70
 ```
 
 If the route prefix is different, use your configured value.
-
-## Local development without Packagist
-
-Inside a monorepo or during package development, use a path repository:
-
-```json
-{
-  "repositories": [
-    {
-      "type": "path",
-      "url": "../emergency-bff",
-      "options": { "symlink": true }
-    }
-  ],
-  "require": {
-    "dataemergencia/emergency-bff": "@dev"
-  }
-}
-```
-
-Then run `composer update dataemergencia/emergency-bff`.
 
 ## Framework hosts
 

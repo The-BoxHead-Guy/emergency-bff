@@ -88,7 +88,7 @@ Laravel app is multi-tenant, deploy one BFF per trust boundary.
 Lint the example files:
 
 ```bash
-cd packages/emergency-bff/examples/laravel
+cd examples/laravel
 ./check.sh
 ```
 

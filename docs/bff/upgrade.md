@@ -12,22 +12,18 @@ The BFF follows Semantic Versioning.
   points.
 - Patch releases fix behavior without changing request or response shapes.
 
-The package version is published from the split repository tag
-`v<version>`; the monorepo tag is `php-v<version>`.
+The package version is published from the Git tag `v<version>`.
 
-## Compatibility matrix
+## Compatibility
 
-| BFF version | PHP  | Client                              | Notes                                       |
-| ----------- | ---- | ----------------------------------- | ------------------------------------------- |
-| `0.1.x`     | 8.4+ | `@dataemergencia/emergency` `0.1.x` | MVP public channels.                        |
-| `0.2.x`     | 8.4+ | `0.2.x`                             | Reserved for breaking changes before `1.0`. |
-
-The client and BFF version independently, but a release is tested as a pair.
-Check the release notes for the pair that was verified together.
+| BFF version | PHP  | Notes                                       |
+| ----------- | ---- | ------------------------------------------- |
+| `0.1.x`     | 8.4+ | MVP public channels.                        |
+| `0.2.x`     | 8.4+ | Reserved for breaking changes before `1.0`. |
 
 ## Upgrading a minor release
 
-1. Read `CHANGELOG.md` in the split repository.
+1. Read `CHANGELOG.md`.
 2. Back up your session store if you changed its layout.
 3. Run:
 
@@ -73,8 +69,8 @@ changelog names the migration step and the affected version.
 1. Reinstall the previous version:
    `composer require dataemergencia/emergency-bff:<previous>`.
 2. Restart PHP-FPM so opcache and workers reload.
-3. If a session key changed, clear the BFF session cookie so clients start a
-   fresh session.
+3. If a session key changed, clear the BFF session cookie so the browser starts
+   a fresh session.
 4. Confirm `/health` and `/config`.
 
 There is no database migration in the BFF, so rollback is a code and session

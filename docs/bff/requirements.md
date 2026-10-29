@@ -43,23 +43,12 @@ Laravel, Symfony or Slim; you mount the provided `Kernel` or forward requests to
 
 ## Network and credentials
 
-- Outbound HTTPS to your configured `EMERGENCY_BFF_API_ORIGIN`
-  (`https://api.dataemergencia.com` by default).
+- Outbound HTTPS to the API origin configured for your deployment
+  (`EMERGENCY_BFF_API_ORIGIN`).
 - A per-customer API key and application identifier, issued by the
   DataEmergencia console. There is no shared key.
 - A public Pusher key and cluster if you want realtime delivery status. The
   Pusher secret is never needed by this package.
-
-## Browser requirements (for the client)
-
-The BFF works with any HTTP client. The reference browser client requires:
-
-- A browser with ES2022 support and native `fetch`.
-- `navigator.geolocation` for the normal activation path. If geolocation is
-  unavailable, the client shows the configured fallback phone number.
-
-See [Browser support](https://github.com/The-BoxHead-Guy/emergency/blob/main/docs/client/browser-support.md)
-in the client documentation.
 
 ## Next step
 

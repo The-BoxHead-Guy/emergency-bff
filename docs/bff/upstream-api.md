@@ -71,7 +71,7 @@ not a generic `500`.
 
 The emergency repository reads the payload from `body.data.attributes`,
 `body.attributes`, `body.data`, or the body itself. It preserves unknown fields
-inside the snapshot, so newer upstream fields reach the client without a BFF
+inside the snapshot, so newer upstream fields reach API consumers without a BFF
 release.
 
 `404` on show or delete becomes `EmergencyNotFoundException`. `404` on the
@@ -96,7 +96,7 @@ active lookup becomes `null`, which lets `GET /current` return `active: false`.
 - Per-customer credentials held server-side.
 - WhatsApp payload construction and delivery fan-out.
 - Delivery summaries (`partial_failure`, `total_failure`) and idempotency.
-- A stable error envelope for the client.
+- A stable error envelope for API consumers.
 
 ## What the BFF does not do
 

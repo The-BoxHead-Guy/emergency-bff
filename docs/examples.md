@@ -1,8 +1,7 @@
 # Examples
 
-The BFF package ships runnable examples and reference integrations. Start with
-the vanilla PHP example: it is the only one that needs no JavaScript build
-step.
+The package ships runnable examples and reference integrations. Start with the
+vanilla PHP example.
 
 ## Vanilla PHP (primary)
 
@@ -11,7 +10,7 @@ a mock upstream API. It proves the full lifecycle without credentials and
 without sending real messages.
 
 ```bash
-cd packages/emergency-bff/examples/vanilla-php
+cd examples/vanilla-php
 ./demo.sh
 ```
 
@@ -34,10 +33,10 @@ Read the example README for the demo codes (`DABC12` valid, `ZZZZZZ` inactive,
 ## Laravel (secondary)
 
 `examples/laravel` is a copy-in reference for a Laravel host. The recommended
-topology is a Laravel page on the same origin as a separately deployed BFF,
-with the client imported through Vite. The example includes the Blade view, the
-ESM entry point, a controller and route, and an optional `SessionStore` adapter
-for hosts that embed the kernel instead of deploying it separately.
+topology is a Laravel page on the same origin as a separately deployed BFF. The
+example includes the Blade view, the ESM entry point, a controller and route,
+and an optional `SessionStore` adapter for hosts that embed the kernel instead
+of deploying it separately.
 
 It is not a standalone Laravel application. Copy the files into an existing
 application, or use them as the shape of your integration. See
@@ -47,26 +46,21 @@ application, or use them as the shape of your integration. See
 
 `examples/api` contains a Postman collection and a curl walkthrough for
 session, current, activate, simulation, refresh and abort. Use it to exercise a
-deployed BFF without the panel.
+deployed BFF without a browser panel.
 
-## Mock BFF mode
+## Mock upstream
 
-There are two independent mocks:
-
-- `packages/emergency-bff/examples/vanilla-php/mock-api.php` mocks the
-  **upstream DataEmergencia API** so the real BFF can run offline.
-- `libs/emergency/examples/vanilla/mock-bff.mjs` mocks the **BFF** so the
-  client can run without PHP.
-
-Do not confuse them. The first validates BFF behaviour; the second validates
-client behaviour.
+`examples/vanilla-php/mock-api.php` mocks the upstream DataEmergencia API so the
+real BFF can run offline. It validates BFF behaviour and sends no real
+messages.
 
 ## Which example should I copy?
 
-| Situation                            | Use                                                                                                     |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| Plain PHP site, no framework         | `examples/vanilla-php`                                                                                  |
-| Laravel site, BFF on the same origin | `examples/laravel`                                                                                      |
-| React or Vite frontend               | [Client React guide](https://github.com/The-BoxHead-Guy/emergency/blob/v0.1.0/docs/client/react.md)     |
-| No build step, static HTML           | [Vanilla client guide](https://github.com/The-BoxHead-Guy/emergency/blob/v0.1.0/docs/client/vanilla.md) |
-| Testing the HTTP contract by hand    | `examples/api`                                                                                          |
+| Situation                            | Use                    |
+| ------------------------------------ | ---------------------- |
+| Plain PHP site, no framework         | `examples/vanilla-php` |
+| Laravel site, BFF on the same origin | `examples/laravel`     |
+| Testing the HTTP contract by hand    | `examples/api`         |
+
+For the browser panel, use the recommended library
+[`@dataemergencia/emergency`](https://github.com/The-BoxHead-Guy/emergency).

@@ -7,7 +7,7 @@ flow against a stateful mock of the DataEmergencia API.
 ## Run everything with one command
 
 ```bash
-cd packages/emergency-bff/examples/vanilla-php
+cd examples/vanilla-php
 ./demo.sh
 ```
 
@@ -23,11 +23,11 @@ is accepted; `ZZZZZZ` is inactive and `bad` is rejected as malformed.
 
 ```bash
 # terminal 1 — mock upstream API
-cd packages/emergency-bff/examples/vanilla-php
+cd examples/vanilla-php
 php -S 127.0.0.1:8081 mock-api.php
 
 # terminal 2 — demo BFF + page
-cd packages/emergency-bff/examples/vanilla-php
+cd examples/vanilla-php
 composer install
 php -S 127.0.0.1:8080 -t public public/index.php
 ```
@@ -37,7 +37,7 @@ php -S 127.0.0.1:8080 -t public public/index.php
 With both servers running:
 
 ```bash
-cd packages/emergency-bff/examples/vanilla-php
+cd examples/vanilla-php
 ./smoke.sh
 ```
 
@@ -61,7 +61,7 @@ EMERGENCY_BFF_COOKIE_SECURE=false
 Start the BFF without the mock:
 
 ```bash
-cd packages/emergency-bff/examples/vanilla-php
+cd examples/vanilla-php
 ./serve.sh
 ```
 

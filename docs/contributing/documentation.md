@@ -1,84 +1,51 @@
 # Documentation standards
 
-This page records the fixed identities, reader personas, information
-architecture, tooling and versioning policy for the emergency module docs. It is
-the source of truth for both documentation sets.
+This page records the identities, reader personas, information architecture and
+versioning policy for the package documentation.
 
-## Fixed identities
+## Identities
 
 | Item                 | Value                             |
 | -------------------- | --------------------------------- |
-| npm package          | `@dataemergencia/emergency`       |
 | Composer package     | `dataemergencia/emergency-bff`    |
-| Monorepo client path | `libs/emergency`                  |
-| Monorepo BFF path    | `packages/emergency-bff`          |
-| Public client repo   | `The-BoxHead-Guy/emergency`       |
-| Public BFF repo      | `The-BoxHead-Guy/emergency-bff`   |
+| Repository           | `The-BoxHead-Guy/emergency-bff`   |
 | Initial version      | `0.1.0`                           |
 | BFF route prefix     | `/de-bff/emergency`               |
 | Identity code format | Six characters, first is a letter |
 
-Both packages are public and version themselves independently. The monorepo is
-the documentation source; each public split repository mirrors its package
-directory to the repository root, so `packages/emergency-bff/docs` becomes
-`docs/` in `The-BoxHead-Guy/emergency-bff` and `libs/emergency/docs` becomes
-`docs/` in `The-BoxHead-Guy/emergency`.
-
 ## Reader personas
 
-1. **Vanilla PHP integrator (primary).** Owns a classic PHP application with a
-   front controller and native sessions. Needs Composer, environment variables,
-   Apache/Nginx guidance, and a no-build browser example.
-2. **Laravel integrator (secondary).** Owns a Laravel application. Needs the
-   session/CSRF adapter contract, route registration and the npm/ESM client.
-3. **JavaScript/React integrator (secondary).** Owns a React application that
-   consumes the BFF over HTTP. Needs the npm client, mount options, typed events,
-   theming, accessibility and browser support.
+1. **PHP integrator (primary).** Owns a PHP application with a front controller
+   and native sessions. Needs Composer, environment variables and a front
+   controller recipe.
+2. **Framework integrator (secondary).** Owns a Laravel or similar application.
+   Needs the session/CSRF adapter contract, route registration and deployment
+   guidance.
+3. **API integrator (secondary).** Calls the JSON API from a frontend. Needs the
+   route contract and error envelope; the recommended browser library is
+   documented in its own repository.
 
 ## Information architecture
 
-The approved order is:
-
 1. Overview
 2. Quickstart
-3. BFF configuration
-4. Client configuration
-5. API contract
-6. Examples
-7. Operations
-8. Migration
-9. Release and deployment
-10. Troubleshooting
+3. Configuration
+4. API contract
+5. Examples
+6. Operations
+7. Migration
+8. Upgrade and versioning
+9. Troubleshooting
 
-Every page starts with the persona and prerequisite it applies to. Shared
-material (API contract, zero-to-panel, migration) is authored once in the BFF
-docs and linked from the client docs through its public GitHub URL.
+Every page starts with the persona and prerequisite it applies to. The
+recommended browser library is linked, not duplicated: its own repository is
+the source of truth for its documentation.
 
 ## Tooling
 
-Documentation is plain Markdown. No static-site generator is used in the MVP.
-
-| Purpose           | Command              |
-| ----------------- | -------------------- |
-| Markdown lint     | `pnpm docs:lint`     |
-| Link check        | `pnpm docs:links`    |
-| Runnable snippets | `pnpm docs:snippets` |
-| Everything        | `pnpm docs:verify`   |
-
-`markdownlint-cli2` is configured by `.markdownlint-cli2.jsonc` at the monorepo
-root. The link checker validates relative links, anchors and image paths; it
-does not depend on network access. The snippet runner executes fenced blocks
-whose info string ends with `runnable`, for example:
-
-````text
-```bash runnable
-php -v
-```
-````
-
-Runnable snippets must be self-contained, must not require production
-credentials, and must finish quickly. A snippet that cannot run unattended is a
-snippet that must not be marked `runnable`.
+Documentation is plain Markdown. No static-site generator is used. Before
+publishing a release, verify relative links and anchors with your Markdown
+tooling of choice; there is no package-level generator to run.
 
 ## Versioning policy
 
@@ -90,5 +57,5 @@ snippet that must not be marked `runnable`.
 
 ## Language
 
-Documentation is written in English. Product UI copy may be Spanish, because
-the MVP ships Spanish copy; document quoted UI strings exactly as they appear.
+Documentation is written in English. Product UI copy may be Spanish; document
+quoted UI strings exactly as they appear.

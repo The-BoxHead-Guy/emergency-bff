@@ -59,8 +59,8 @@ result and does not send messages twice. A different key creates a new attempt.
 
 The BFF checks for an existing active emergency first. If one exists, it returns
 `409 emergency_already_active` and does not fetch the profile or send messages.
-The reference client catches this code, hydrates the active emergency and shows
-the panel in its active state instead of treating it as a hard failure.
+A frontend should catch this code, hydrate the active emergency and render its
+active state instead of treating it as a hard failure.
 
 It then fetches the profile and requires:
 
@@ -88,7 +88,7 @@ response has `partial_failure: true` and a `failures` array.
 
 Only after a successful dispatch does the BFF create the upstream emergency with
 the responders array and `initiator_id: code`. The snapshot is stored in the
-session and returned to the client.
+session and returned to the caller.
 
 ### 6. Abort
 
@@ -102,14 +102,13 @@ emergency that no longer exists gets `404 emergency_not_found`.
 ### 7. Resume
 
 On page load, `GET /current` asks upstream for the active emergency by code. If
-one exists, the BFF stores and returns it; the client opens the panel and shows
-the realtime status. If not, the session snapshot is cleared and the client
-stays idle.
+one exists, the BFF stores and returns it and the frontend renders the realtime
+status. If not, the session snapshot is cleared and the frontend stays idle.
 
 ### 8. Refresh and realtime
 
-`POST /{id}/refresh` re-reads the emergency and its responder statuses. The
-reference client calls it after realtime events, on tab focus, on network
+`POST /{id}/refresh` re-reads the emergency and its responder statuses.
+Frontends should call it after realtime events, on tab focus, on network
 reconnect and at a throttled interval. Delivery statuses are read, not inferred.
 
 ## Simulation

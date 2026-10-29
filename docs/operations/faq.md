@@ -8,20 +8,14 @@ Your application supplies a front controller and the web server.
 
 ## Does the package render the SOS panel?
 
-No. The BFF is backend-only. The browser panel is
-`@dataemergencia/emergency`, a separate npm package. The two packages are
-versioned independently and speak the documented HTTP contract.
+No. It provides the API. Use the recommended library,
+[`@dataemergencia/emergency`](https://github.com/The-BoxHead-Guy/emergency), for
+the browser panel.
 
-## Do I need Node.js in production?
-
-No. The panel is delivered as a prebuilt JavaScript bundle. Node.js is only
-needed if you build the client into your own frontend or run the example
-projects.
-
-## Can the panel call a BFF on another domain?
+## Can the frontend call the BFF on another domain?
 
 No, not by default. The BFF rejects requests whose `Origin` host or port does
-not match `Host`. Deploy the panel and the BFF on the same origin, or expose
+not match `Host`. Serve the frontend and the BFF from the same origin, or expose
 the BFF through a same-origin reverse proxy.
 
 ## Why is there a PHP session if the panel already has a code?
@@ -47,28 +41,27 @@ required. Session storage must survive across requests and workers.
 
 ## Can I test without sending WhatsApp messages?
 
-Yes. Run the bundled mock API and BFF from
-`packages/emergency-bff/examples/vanilla-php` with `./demo.sh`, or implement a
-mock upstream. Both the BFF and the client ship mock servers for local
-development.
+Yes. Run the bundled mock API and BFF from `examples/vanilla-php` with
+`./demo.sh`, or implement a mock upstream. The package ships a mock upstream
+for local development.
 
 ## Is realtime required?
 
-No. Pusher updates are an enhancement. The client calls
-`GET /current` on mount and reconciles on focus, reconnect and after
-activation, so delivery status still converges without Pusher.
+No. Pusher updates are an enhancement. Consumers should call `GET /current` on
+mount and reconcile on focus, reconnect and after activation, so delivery
+status still converges without Pusher.
 
 ## Can a person have more than one active emergency?
 
 The upstream API enforces one active emergency per code. A second activation
-returns `409 emergency_already_active`; the client then loads the active
+returns `409 emergency_already_active`; the frontend should then load the active
 emergency instead of creating a duplicate.
 
 ## What happens if WhatsApp delivery fails for every contact?
 
 The BFF returns `502 whatsapp_delivery_failed` and does not create the
-emergency. The client shows the failure and keeps the SOS action available so
-the person can retry or use the fallback phone number.
+emergency. The frontend should show the failure and keep the SOS action
+available so the person can retry or use the fallback phone number.
 
 ## Does the BFF work behind a load balancer?
 
@@ -90,7 +83,7 @@ network boundary.
 
 ## Can I use the BFF with multiple tenants?
 
-Not in `0.1.0`. One deployment uses one API key and one application identifier.
+Not in `0.1.1`. One deployment uses one API key and one application identifier.
 For multiple customers, deploy one BFF instance per trust boundary, and see the
 ownership limitation in [Security](../bff/security.md#known-limitation-refresh-ownership).
 

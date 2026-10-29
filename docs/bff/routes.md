@@ -1,6 +1,6 @@
 # Routes
 
-Applies to: integrators calling the JSON API directly and client authors.
+Applies to: integrators calling the JSON API directly and frontend authors.
 
 All routes are relative to `EMERGENCY_BFF_ROUTE_PREFIX`, default
 `/de-bff/emergency`. Every response is JSON, carries `X-Request-Id` and
@@ -61,8 +61,8 @@ Returns the route prefix, the public realtime mode and a CSRF token:
 }
 ```
 
-If no Pusher key is configured, `key` and `cluster` are `null` and the client
-reports realtime as unavailable. The CSRF token is the value to send in
+If no Pusher key is configured, `key` and `cluster` are `null` and consumers
+should treat realtime as unavailable. The CSRF token is the value to send in
 `X-CSRF-Token` for the next unsafe request.
 
 ## `POST /session`
@@ -122,8 +122,9 @@ Request:
 ```
 
 `geolocation` may be nested under `coords` (`{ "coords": { "latitude": … } }`).
-Coordinates are validated as numeric when present. The reference client always
-sends a position and switches to the fallback phone when the browser denies it.
+Coordinates are validated as numeric when present. Send a position when the
+browser allows it and fall back to the configured phone number when it does
+not.
 
 Optional idempotency:
 
@@ -133,7 +134,7 @@ Idempotency-Key: 2b7a…
 
 The key can also be sent as `idempotency_key` in the body. Repeating a request
 with the same key returns the stored result instead of sending WhatsApp messages
-again. The reference client generates a UUID per operation.
+again. Generate a UUID per operation.
 
 Response `201`:
 
@@ -168,8 +169,8 @@ Sends the simulation template to the emergency contacts. The response has the
 same shape as activation with `simulated: true` and `emergency_id: null`. It
 never creates an upstream emergency.
 
-The BFF does not prevent a simulation while a real emergency is active; the
-reference client blocks that case in the UI.
+The BFF does not prevent a simulation while a real emergency is active;
+frontends should block that case in the UI.
 
 ## `POST /{id}/refresh`
 

@@ -26,12 +26,13 @@ Both values are returned by `GET /config`:
 }
 ```
 
-If either value is empty, the client reports `realtimeStatus: "unavailable"` and
-keeps working in pull mode through `POST /{id}/refresh`.
+Both values must be set for realtime to be available. If either is empty,
+`GET /config` returns `null` for both and consumers keep working in pull mode
+through `GET /current` and `POST /{id}/refresh`.
 
 ## Channel naming
 
-For each responder phone, the client subscribes to:
+For each responder phone, the frontend subscribes to:
 
 ```text
 whatsapp.<phone without a leading +>
@@ -42,20 +43,18 @@ Example: `+57 300 123 4567` normalized upstream to `573001234567` becomes
 
 Channel names are not secret. Anyone who knows a phone number can subscribe to
 its public channel. The MVP therefore treats channel events as **metadata-only
-signals**: the client does not trust their payload. Any event triggers a
+signals**: consumers do not trust their payload. Any event should trigger a
 throttled reconciliation call to the BFF, which returns the authoritative
 responder statuses.
 
-## Client behavior
+## Consumer behavior
 
-- Subscription is created only when a real emergency is active and responders
-  exist.
-- Pusher connects with `forceTLS: true`.
-- Reconnect, tab focus, `online` and `visibilitychange` trigger the same
-  throttled refresh.
-- Refresh is throttled to one call per 1500 ms.
-- `destroy()` unsubscribes and disconnects.
-- Realtime is optional; the panel remains correct without it.
+- Subscribe only when a real emergency is active and responders exist.
+- Connect over TLS.
+- On reconnect, tab focus, `online` and `visibilitychange`, trigger a throttled
+  reconciliation call instead of trusting the event payload.
+- Realtime is optional; the state returned by the BFF remains authoritative
+  without it.
 
 ## Why public channels in the MVP
 

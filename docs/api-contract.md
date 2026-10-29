@@ -1,6 +1,6 @@
 # API contract
 
-Applies to: BFF integrators and client maintainers.
+Applies to: BFF integrators and frontend maintainers.
 
 This is the HTTP contract between the browser and the BFF. It is versioned with
 the BFF package. Additive fields are compatible; removing or renaming a field is
@@ -174,7 +174,7 @@ Idempotency-Key: 6f1c…
 }
 ```
 
-`geolocation` is optional, but the client always sends it. Missing coordinates
+`geolocation` is optional, but sending it is recommended. Missing coordinates
 mean the responders receive the emergency without a map link.
 
 ```http
@@ -202,7 +202,8 @@ mean the responders receive the emergency without a map link.
 }
 ```
 
-The response does not include the internal snapshot. The client reconstructs it.
+The response does not include the internal snapshot. Frontends reconstruct it
+from the returned fields.
 
 Behavior:
 
@@ -275,7 +276,7 @@ X-CSRF-Token: …
 `404 emergency_not_found` if upstream no longer has the emergency.
 
 > [!WARNING]
-> **Ownership limitation in 0.1.0.** `POST /{id}/refresh` checks that a session
+> **Ownership limitation in 0.1.1.** `POST /{id}/refresh` checks that a session
 > exists but does not verify that the emergency belongs to the session identity.
 > Treat emergency IDs as non-guessable and do not expose this deployment to
 > mutually untrusted tenants until the ownership check ships. See
@@ -366,7 +367,7 @@ response header.
 | 502  | `upstream_error`             | Upstream API error; `details.status`, `details.upstream_code`. |
 | 502  | `whatsapp_delivery_failed`   | Every WhatsApp send failed.                                    |
 
-The client maps `network` and transport failures locally; they have no BFF code.
+Frontends map `network` and transport failures locally; they have no BFF code.
 
 ## Status codes
 

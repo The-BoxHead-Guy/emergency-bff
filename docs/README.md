@@ -1,13 +1,13 @@
 # Emergency BFF documentation
 
 `dataemergencia/emergency-bff` is a framework-agnostic PHP backend-for-frontend
-for the DataEmergencia emergency module. It exposes the
-`/de-bff/emergency/*` JSON API, validates the 6-character identity code, builds
-the WhatsApp template payloads server-side and proxies the existing
-DataEmergencia API.
+for the DataEmergencia emergency flow. It validates the identity code, builds
+the WhatsApp templates server-side and keeps the emergency state in sync with
+the upstream API.
 
-The BFF ships backend PHP only. The browser panel lives in
-[`@dataemergencia/emergency`](https://github.com/The-BoxHead-Guy/emergency).
+The browser panel is a separate package:
+[`@dataemergencia/emergency`](https://github.com/The-BoxHead-Guy/emergency). It
+is the recommended frontend for this backend.
 
 ## Start here
 
@@ -18,22 +18,17 @@ The BFF ships backend PHP only. The browser panel lives in
 | Calling the JSON API directly         | [Routes](bff/routes.md) and [API contract](api-contract.md)                                                       |
 | Integrating Laravel                   | [Session and CSRF](bff/session-and-csrf.md)                                                                       |
 | Operating the service                 | [Deployment](bff/deployment.md) and [Operations FAQ](operations/faq.md)                                           |
-| Publishing a release                  | [Release and deployment](release/release-checklist.md)                                                            |
+| Upgrading a release                   | [Upgrade guide](bff/upgrade.md) and [Versioning](release/versioning.md)                                           |
 
 ## Documentation map
-
-The information architecture is: overview, quickstart, BFF configuration,
-client configuration, API contract, examples, operations, migration, release and
-deployment, and troubleshooting.
 
 ### Overview and quickstart
 
 - [Requirements](bff/requirements.md)
 - [Installation](bff/installation.md)
 - [Zero to panel](onboarding/zero-to-panel.md)
-- [Onboarding checklist](onboarding/checklist.md)
 
-### BFF configuration
+### Configuration and integration
 
 - [Configuration reference](bff/configuration.md)
 - [Session and CSRF](bff/session-and-csrf.md)
@@ -51,29 +46,29 @@ deployment, and troubleshooting.
 - [API contract](api-contract.md)
 - [Examples](examples.md)
 
-### Operations, migration and release
+### Operations and migration
 
 - [FAQ](operations/faq.md)
 - [Troubleshooting](operations/troubleshooting.md)
-- [Migration from bp.scaem.app](migration/from-bp-scaem.md)
-- [Split repositories](release/split-repositories.md)
+- [Migration from a bundled flow](migration/from-bundled-flow.md)
+
+### Releases
+
 - [Versioning](release/versioning.md)
-- [Packagist publication](release/packagist.md)
-- [Release checklist](release/release-checklist.md)
 
 ### Contributor documentation
 
 - [Documentation standards](contributing/documentation.md)
 - [Verification log](contributing/verification.md)
 
-## Client documentation
+## Recommended library
 
-The browser client is documented in its own repository:
+The browser panel is documented in its own repository:
 
 - [Client documentation](https://github.com/The-BoxHead-Guy/emergency#readme)
 - [Client quickstart](https://github.com/The-BoxHead-Guy/emergency/blob/main/docs/client/quickstart.md)
 
 ## Version
 
-These docs describe `0.1.0` and are versioned with the package. The quickstart
+These docs describe `0.1.1` and are versioned with the package. The quickstart
 is tested against the latest published tag.

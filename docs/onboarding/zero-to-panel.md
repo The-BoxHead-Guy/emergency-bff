@@ -1,12 +1,12 @@
 # Zero to panel
 
 This guide takes a developer from an empty directory to a working emergency
-panel. It is deliberately linear: complete each step before moving to the next
+flow. It is deliberately linear: complete each step before moving to the next
 one.
 
-If you only want to see the panel work on your machine first, use the mock
-upstream in [Examples](../examples.md). The mock needs no credentials and sends
-no real WhatsApp messages.
+If you only want to see the flow work on your machine first, use the mock
+upstream in [Examples](../examples.md). The mock needs no credentials and sends no
+real WhatsApp messages.
 
 ## Before you start
 
@@ -16,8 +16,6 @@ You need:
 - Composer 2.
 - A DataEmergencia API key and application identifier.
 - A phone or browser that can share a location over HTTPS (or `localhost`).
-- Node.js 24.22.1 or newer only if you use the JavaScript client from npm.
-  The no-build client needs no Node.js.
 
 The emergency flow sends real WhatsApp messages in production mode. Test with
 codes and phone numbers that your team controls.
@@ -67,13 +65,12 @@ server:
 ```bash
 export EMERGENCY_BFF_API_KEY="your-api-key"
 export EMERGENCY_BFF_APPLICATION_IDENTIFIER="your-application-identifier"
-export EMERGENCY_BFF_API_ORIGIN="https://api.dataemergencia.com"
 export EMERGENCY_BFF_COOKIE_SECURE="true"
 ```
 
-Defaults are sensible for production. The two required values have no
-defaults. If either is missing, `Bootstrap::create()` throws a
-`ConfigurationException` before serving a request.
+The two credentials have no defaults. If either is missing,
+`Bootstrap::create()` throws a `ConfigurationException` before serving a
+request.
 
 Full reference: [BFF configuration](../bff/configuration.md).
 
@@ -127,58 +124,26 @@ is wrong, `404 inactive_code` means the code does not exist upstream.
 The code format is six characters: a letter followed by five letters or
 digits.
 
-## 6. Mount the panel
+## 6. Connect the browser panel
 
-The browser client is distributed as `@dataemergencia/emergency`. You can use
-it without a build step.
+The browser panel is the recommended library
+[`@dataemergencia/emergency`](https://github.com/The-BoxHead-Guy/emergency). It
+talks to this backend over the routes above.
 
-Create `public/panel.html`:
+Point the panel at the route prefix (for example
+`http://127.0.0.1:8080/de-bff/emergency`) and serve it from the same origin as
+the BFF. Cross-origin requests are rejected.
 
-```html
-<!doctype html>
-<html lang="es">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Emergency panel</title>
-  </head>
-  <body>
-    <button id="sos" type="button">SOS</button>
-    <div id="emergency-root"></div>
-
-    <script src="https://cdn.jsdelivr.net/npm/@dataemergencia/emergency@0.1.0/dist/iife/emergency.iife.global.js"></script>
-    <script>
-      const client = window.DataEmergenciaEmergency.mount({
-        root: '#emergency-root',
-        bffBaseUrl: 'http://127.0.0.1:8080/de-bff/emergency',
-        code: 'DABC12',
-        trigger: '#sos',
-        fallback: {
-          phone: '+57 300 123 4567',
-          label: 'Línea de emergencia',
-        },
-        onEvent: (event, payload) => console.info(event, payload),
-      });
-    </script>
-  </body>
-</html>
-```
-
-`bffBaseUrl` must include the route prefix and must be the same origin that
-served the page (or a same-origin proxy). Cross-origin requests are rejected
-by the BFF.
-
-For the full client reference, see the
-[client quickstart](https://github.com/The-BoxHead-Guy/emergency/blob/v0.1.0/docs/client/quickstart.md).
+See the [client quickstart](https://github.com/The-BoxHead-Guy/emergency#readme)
+for the mount options.
 
 ## 7. Activate and verify
 
-Open `panel.html` from the same origin as the BFF and press **SOS**.
+Open the panel from the same origin as the BFF and press **SOS**.
 
 1. The browser asks for location permission. Allow it, or use the fallback
    phone link if permission is denied.
-2. The panel shows `Activando emergencia…` and calls
-   `POST /de-bff/emergency/activate`.
+2. The panel calls `POST /de-bff/emergency/activate`.
 3. The BFF contacts the upstream API, sends the WhatsApp templates and creates
    the emergency.
 4. The panel shows the responder list and delivery statuses.
@@ -206,7 +171,6 @@ The BFF sends the abort WhatsApp message and deletes the upstream state.
 
 ## What to do next
 
-- Run the complete checklist: [First integration checklist](checklist.md).
 - Run the packaged example: [Vanilla PHP example](../examples.md#vanilla-php-primary).
 - Read every request and response: [API contract](../api-contract.md).
 - Deploy behind Apache or Nginx: [Deployment](../bff/deployment.md).
