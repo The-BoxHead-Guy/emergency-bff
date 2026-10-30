@@ -23,6 +23,7 @@ use DataEmergencia\EmergencyBff\Tests\Support\InMemorySessionStore;
 use DataEmergencia\EmergencyBff\Tests\TestCase;
 use DataEmergencia\EmergencyBff\WhatsApp\ResponderFactory;
 use DataEmergencia\EmergencyBff\WhatsApp\WhatsAppPayloadBuilder;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 final class KernelTest extends TestCase
 {
@@ -62,9 +63,10 @@ final class KernelTest extends TestCase
         self::assertSame('no-store', $config->headers()['Cache-Control']);
     }
 
-    public function test_it_runs_the_full_session_to_abort_flow(): void
+    #[DataProvider('emergencyIdProvider')]
+    public function test_it_runs_the_full_session_to_abort_flow(string|int $upstreamId, string $expected): void
     {
-        $kernel = $this->kernel();
+        $kernel = $this->kernel(emergencyId: $upstreamId);
         $token = $this->csrfToken($kernel);
 
         $session = $kernel->handle($this->json('POST', '/de-bff/emergency/session', ['code' => 'DABC12'], $token));
@@ -82,20 +84,22 @@ final class KernelTest extends TestCase
             'geolocation' => ['coords' => ['latitude' => '4.7110', 'longitude' => '-74.0721']],
         ], $token));
         self::assertSame(201, $activated->status());
-        self::assertSame('EMG1', $activated->body()['emergency_id']);
+        self::assertArrayHasKey('emergency_id', $activated->body());
+        self::assertIsString($activated->body()['emergency_id']);
+        self::assertSame($expected, $activated->body()['emergency_id']);
         self::assertSame('wamid.1', $activated->body()['responders'][0]['message_id']);
 
         $current = $kernel->handle(new Request('GET', '/de-bff/emergency/current'));
         self::assertTrue($current->body()['active']);
-        self::assertSame('EMG1', $current->body()['emergency']['emergency_id']);
+        self::assertSame($expected, $current->body()['emergency']['emergency_id']);
 
-        $refreshed = $kernel->handle($this->json('POST', '/de-bff/emergency/EMG1/refresh', [], $token));
+        $refreshed = $kernel->handle($this->json('POST', '/de-bff/emergency/'.$expected.'/refresh', [], $token));
         self::assertSame(200, $refreshed->status());
-        self::assertSame('EMG1', $refreshed->body()['emergency']['emergency_id']);
+        self::assertSame($expected, $refreshed->body()['emergency']['emergency_id']);
 
-        $aborted = $kernel->handle($this->json('DELETE', '/de-bff/emergency/EMG1', [], $token));
+        $aborted = $kernel->handle($this->json('DELETE', '/de-bff/emergency/'.$expected, [], $token));
         self::assertSame(200, $aborted->status());
-        self::assertSame('EMG1', $aborted->body()['emergency_id']);
+        self::assertSame($expected, $aborted->body()['emergency_id']);
         self::assertTrue($aborted->body()['deleted']);
 
         $current = $kernel->handle(new Request('GET', '/de-bff/emergency/current'));
@@ -234,6 +238,17 @@ final class KernelTest extends TestCase
         self::assertSame('application/json; charset=utf-8', $response->headers()['Content-Type']);
     }
 
+    /**
+     * @return array<string, array{string|int, string}>
+     */
+    public static function emergencyIdProvider(): array
+    {
+        return [
+            'string id' => ['EMG1', 'EMG1'],
+            'numeric id' => [130, '130'],
+        ];
+    }
+
     private function csrfToken(Kernel $kernel): string
     {
         $response = $kernel->handle(new Request('GET', '/de-bff/emergency/config'));
@@ -258,10 +273,13 @@ final class KernelTest extends TestCase
         return new Request($method, $path, $headers, [], $body, json_encode($body) ?: '');
     }
 
-    private function kernel(?FakeApiClient $client = null, ?RateLimiter $limiter = null): Kernel
-    {
+    private function kernel(
+        ?FakeApiClient $client = null,
+        ?RateLimiter $limiter = null,
+        string|int $emergencyId = 'EMG1',
+    ): Kernel {
         $active = null;
-        $client ??= new FakeApiClient(function (string $method, string $path, ?array $body) use (&$active): ApiResponse {
+        $client ??= new FakeApiClient(function (string $method, string $path, ?array $body) use (&$active, $emergencyId): ApiResponse {
             if ($method === 'GET' && str_ends_with($path, '/exists')) {
                 return str_contains($path, 'DABC12') || str_contains($path, 'A12345')
                     ? new ApiResponse(200, ['data' => ['attributes' => ['exists' => true]]])
@@ -283,13 +301,13 @@ final class KernelTest extends TestCase
             }
 
             if ($method === 'POST' && $path === '/v2/emergency') {
-                $active = ['emergency_id' => 'EMG1', 'is_active' => true];
+                $active = ['emergency_id' => $emergencyId, 'is_active' => true];
 
                 return new ApiResponse(201, ['data' => ['attributes' => $active]]);
             }
 
-            if ($method === 'GET' && $path === '/v2/emergency/EMG1') {
-                return new ApiResponse(200, ['data' => ['attributes' => $active ?? ['emergency_id' => 'EMG1']]]);
+            if ($method === 'GET' && $path === '/v2/emergency/'.$emergencyId) {
+                return new ApiResponse(200, ['data' => ['attributes' => $active ?? ['emergency_id' => $emergencyId]]]);
             }
 
             if ($method === 'DELETE' && str_starts_with($path, '/v2/emergency/')) {

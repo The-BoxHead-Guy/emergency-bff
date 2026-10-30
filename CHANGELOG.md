@@ -6,6 +6,20 @@ and [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-30
+
+### Changed
+
+- Improved `scripts/split.sh` output with numbered progress, status icons and
+  clearer failure messages.
+- Removed the clean-install reminder from the split script's final output.
+
+### Fixed
+
+- Coerced a numeric upstream `emergency_id` to its decimal string in the
+  repository, so client payloads no longer receive `null`. This restores the
+  `refresh()` and `abort()` guards that no-op when the id is missing.
+
 ## [0.1.1] - 2026-10-29
 
 Documentation-only release. No runtime behavior changed.

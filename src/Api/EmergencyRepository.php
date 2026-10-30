@@ -100,11 +100,34 @@ final class EmergencyRepository
         $attributes = $body['data']['attributes'] ?? $body['attributes'] ?? null;
 
         if (is_array($attributes)) {
-            return $attributes;
+            return $this->normalizeId($attributes);
         }
 
         $data = $body['data'] ?? null;
 
-        return is_array($data) ? $data : $body;
+        return $this->normalizeId(is_array($data) ? $data : $body);
+    }
+
+    /**
+     * @param array<string, mixed> $shape
+     * @return array<string, mixed>
+     */
+    private function normalizeId(array $shape): array
+    {
+        foreach (['emergency_id', 'id'] as $key) {
+            if (!array_key_exists($key, $shape)) {
+                continue;
+            }
+
+            $value = $shape[$key];
+
+            $shape[$key] = match (true) {
+                is_int($value) => (string) $value,
+                is_string($value) && $value !== '' => $value,
+                default => null,
+            };
+        }
+
+        return $shape;
     }
 }

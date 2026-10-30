@@ -33,6 +33,17 @@ final class EmergencyServiceTest extends TestCase
         ],
     ];
 
+    private const EMERGENCY_NUMERIC = [
+        'data' => [
+            'id' => 130,
+            'type' => 'emergency',
+            'attributes' => [
+                'emergency_id' => 130,
+                'is_active' => true,
+            ],
+        ],
+    ];
+
     private function service(?FakeApiClient $client = null, ?InMemoryIdempotencyStore $idempotency = null): array
     {
         $client ??= $this->client();
@@ -48,11 +59,16 @@ final class EmergencyServiceTest extends TestCase
         return [$service, $client];
     }
 
-    private function client(?callable $whatsApp = null, ?array $active = null, array $profile = []): FakeApiClient
-    {
+    private function client(
+        ?callable $whatsApp = null,
+        ?array $active = null,
+        array $profile = [],
+        array $emergency = self::EMERGENCY,
+    ): FakeApiClient {
         $profileBody = $profile === [] ? $this->fixture('responses/success.json') : $profile;
+        $emergencyId = $emergency['data']['attributes']['emergency_id'] ?? $emergency['data']['id'] ?? 'EMG1';
 
-        return new FakeApiClient(function (string $method, string $path, ?array $body) use ($whatsApp, $active, $profileBody): ApiResponse {
+        return new FakeApiClient(function (string $method, string $path, ?array $body) use ($whatsApp, $active, $profileBody, $emergency, $emergencyId): ApiResponse {
             if ($method === 'GET' && str_contains($path, 'models/data')) {
                 return new ApiResponse(200, $profileBody);
             }
@@ -70,11 +86,11 @@ final class EmergencyServiceTest extends TestCase
             }
 
             if ($method === 'POST' && $path === '/v2/emergency') {
-                return new ApiResponse(201, self::EMERGENCY);
+                return new ApiResponse(201, $emergency);
             }
 
-            if ($method === 'GET' && $path === '/v2/emergency/EMG1') {
-                return new ApiResponse(200, self::EMERGENCY);
+            if ($method === 'GET' && $path === '/v2/emergency/'.$emergencyId) {
+                return new ApiResponse(200, $emergency);
             }
 
             if ($method === 'DELETE' && str_starts_with($path, '/v2/emergency/')) {
@@ -109,6 +125,16 @@ final class EmergencyServiceTest extends TestCase
         self::assertSame('DABC12', $created['initiator_id']);
         self::assertTrue($created['is_active']);
         self::assertSame('wamid.1', $created['responders'][0]['message_id']);
+    }
+
+    public function test_it_returns_a_numeric_upstream_id_as_a_string(): void
+    {
+        [$service] = $this->service($this->client(emergency: self::EMERGENCY_NUMERIC));
+
+        $result = $service->activate(Identity::fromCode('DABC12'), []);
+
+        self::assertSame('130', $result->emergencyId);
+        self::assertSame('130', $result->toArray()['emergency_id']);
     }
 
     public function test_it_reports_partial_failures_and_still_creates_the_emergency(): void

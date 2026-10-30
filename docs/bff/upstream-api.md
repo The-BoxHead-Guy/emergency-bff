@@ -74,6 +74,10 @@ The emergency repository reads the payload from `body.data.attributes`,
 inside the snapshot, so newer upstream fields reach API consumers without a BFF
 release.
 
+A numeric `emergency_id` (or `id`) is coerced to its decimal string in the
+repository, so every BFF payload exposes the identifier as a string. The value is
+`null` only when the upstream response has no id.
+
 `404` on show or delete becomes `EmergencyNotFoundException`. `404` on the
 active lookup becomes `null`, which lets `GET /current` return `active: false`.
 
