@@ -21,8 +21,6 @@ is hardcoded in the package.
 | `EMERGENCY_BFF_COOKIE_SECURE`          | `true`                           | No       | Send the cookie only over HTTPS. Set `false` for local HTTP demos.       |
 | `EMERGENCY_BFF_COOKIE_HTTP_ONLY`       | `true`                           | No       | Hide the cookie from JavaScript. Keep this `true`.                       |
 | `EMERGENCY_BFF_COOKIE_SAME_SITE`       | `Lax`                            | No       | `Lax`, `Strict` or `None`.                                               |
-| `EMERGENCY_BFF_PUSHER_KEY`             | empty                            | No       | Public Pusher key. Without it, realtime is reported as unavailable.      |
-| `EMERGENCY_BFF_PUSHER_CLUSTER`         | empty                            | No       | Public Pusher cluster, for example `us2`.                                |
 | `EMERGENCY_BFF_QR_BASE_HOST`           | `zur.dataemergencia.com`         | No       | Host used to build QR links inside WhatsApp templates.                   |
 | `EMERGENCY_BFF_FALLBACK_ORIGIN_URL`    | `https://dataemergencia.com`     | No       | Fallback origin reserved for payload generation.                         |
 | `EMERGENCY_BFF_LOCAL`                  | `false`                          | No       | Build QR links against `http://localhost/<qr host>` for local testing.   |
@@ -46,8 +44,6 @@ EMERGENCY_BFF_COOKIE_PATH=/
 EMERGENCY_BFF_COOKIE_SECURE=true
 EMERGENCY_BFF_COOKIE_HTTP_ONLY=true
 EMERGENCY_BFF_COOKIE_SAME_SITE=Lax
-EMERGENCY_BFF_PUSHER_KEY=
-EMERGENCY_BFF_PUSHER_CLUSTER=
 ```
 
 The package does not load `.env` files. Your framework or process manager must
@@ -82,8 +78,6 @@ $config = Config::fromArray([
     'sessionTtl' => 3600,
     'cookieSecure' => true,
     'cookieSameSite' => 'Lax',
-    'pusherKey' => $pusherKey,
-    'pusherCluster' => $pusherCluster,
 ]);
 ```
 

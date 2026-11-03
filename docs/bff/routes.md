@@ -11,7 +11,7 @@ All routes are relative to `EMERGENCY_BFF_ROUTE_PREFIX`, default
 | Method   | Path            | Auth           | Success | Purpose                                                   |
 | -------- | --------------- | -------------- | ------- | --------------------------------------------------------- |
 | `GET`    | `/health`       | None           | `200`   | Liveness probe.                                           |
-| `GET`    | `/config`       | None           | `200`   | Route prefix, realtime configuration and CSRF token.      |
+| `GET`    | `/config`       | None           | `200`   | Route prefix and CSRF token.                              |
 | `POST`   | `/session`      | CSRF           | `201`   | Validate the code and start the session.                  |
 | `GET`    | `/current`      | Session        | `200`   | Resume an active emergency for the session code.          |
 | `POST`   | `/activate`     | Session + CSRF | `201`   | Send WhatsApp alerts and create the emergency.            |
@@ -44,26 +44,17 @@ curl -i http://localhost/de-bff/emergency/health
 
 ## `GET /config`
 
-Returns the route prefix, the public realtime mode and a CSRF token:
+Returns the route prefix and a CSRF token:
 
 ```json
 {
   "route_prefix": "/de-bff/emergency",
-  "realtime": {
-    "mode": "public",
-    "pusher": {
-      "key": "public-key",
-      "cluster": "us2",
-      "channel_pattern": "whatsapp.{phone}"
-    }
-  },
   "csrf_token": "…"
 }
 ```
 
-If no Pusher key is configured, `key` and `cluster` are `null` and consumers
-should treat realtime as unavailable. The CSRF token is the value to send in
-`X-CSRF-Token` for the next unsafe request.
+The CSRF token is the value to send in `X-CSRF-Token` for the next unsafe
+request.
 
 ## `POST /session`
 
@@ -103,8 +94,7 @@ regenerated and the CSRF token is rotated.
     "is_active": true,
     "is_simulated": false,
     "responders": []
-  },
-  "realtime": { "mode": "public", "pusher": { "…": "…" } }
+  }
 }
 ```
 

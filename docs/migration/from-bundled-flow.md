@@ -14,22 +14,23 @@ A typical bundled implementation:
 3. The frontend or backend builds the WhatsApp payloads.
 4. The application sends the messages and creates or cancels the emergency.
 5. API credentials live in the server environment.
-6. The application provides session, CSRF and realtime behaviour.
+6. The application provides session and CSRF behaviour; the browser library
+   supplies the public Pusher settings for realtime.
 
 ## Target responsibilities
 
-| Responsibility                     | After                                        |
-| ---------------------------------- | -------------------------------------------- |
-| QR entry point and routing         | Host application                             |
-| Code format and existence check    | BFF `POST /session`                          |
-| API key and application identifier | BFF server-side only                         |
-| WhatsApp payload construction      | BFF                                          |
-| Emergency create / show / delete   | BFF routes                                   |
-| Session and CSRF                   | BFF native session plus CSRF token           |
-| Realtime                           | Public Pusher channels configured by the BFF |
-| Panel UI                           | Recommended library, or your own frontend    |
-| Branding, legal copy, support      | Host application                             |
-| Operator view and dashboards       | Unchanged                                    |
+| Responsibility                     | After                                     |
+| ---------------------------------- | ----------------------------------------- |
+| QR entry point and routing         | Host application                          |
+| Code format and existence check    | BFF `POST /session`                       |
+| API key and application identifier | BFF server-side only                      |
+| WhatsApp payload construction      | BFF                                       |
+| Emergency create / show / delete   | BFF routes                                |
+| Session and CSRF                   | BFF native session plus CSRF token        |
+| Realtime                           | Public channels owned by the API          |
+| Panel UI                           | Recommended library, or your own frontend |
+| Branding, legal copy, support      | Host application                          |
+| Operator view and dashboards       | Unchanged                                 |
 
 The browser no longer talks to the DataEmergencia API directly, and no API key
 is exposed to it. The browser talks only to the BFF.
@@ -42,7 +43,6 @@ is exposed to it. The browser talks only to the BFF.
 - Emergency creation, lookup, refresh and abort.
 - Responder delivery fan-out and partial-failure reporting.
 - CSRF, same-origin enforcement, rate limiting and session TTL.
-- Public Pusher configuration returned by `GET /config`.
 
 ## What stays in the host application
 
@@ -82,7 +82,7 @@ is exposed to it. The browser talks only to the BFF.
 | Cross-origin       | Application CORS rules       | Same-origin only                               |
 | Validation errors  | Application responses        | Nested `error` envelope with stable codes      |
 | WhatsApp templates | Built in the application     | Fixed templates                                |
-| Realtime           | Application-specific         | Public channels with metadata                  |
+| Realtime           | Application-specific         | Public channels published by the API           |
 | Simulation         | Application-specific         | `POST /simulacrum`, never creates an emergency |
 | Idempotency        | Application-specific         | `Idempotency-Key`, in-memory per process       |
 

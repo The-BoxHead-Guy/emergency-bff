@@ -74,8 +74,6 @@ $environment += [
     'EMERGENCY_BFF_API_KEY' => 'demo-key',
     'EMERGENCY_BFF_APPLICATION_IDENTIFIER' => 'demo-application',
     'EMERGENCY_BFF_COOKIE_SECURE' => 'false',
-    'EMERGENCY_BFF_PUSHER_KEY' => 'demo-public-key',
-    'EMERGENCY_BFF_PUSHER_CLUSTER' => 'us2',
 ];
 
 // Real environment variables win over .env, so demo.sh can force the mock.

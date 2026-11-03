@@ -47,9 +47,10 @@ for local development.
 
 ## Is realtime required?
 
-No. Pusher updates are an enhancement. Consumers should call `GET /current` on
-mount and reconcile on focus, reconnect and after activation, so delivery
-status still converges without Pusher.
+No. Pusher updates are an enhancement. The API publishes them and the browser
+library subscribes using its own public Pusher configuration. Consumers should
+call `GET /current` on mount and reconcile on focus, reconnect and after
+activation, so delivery status still converges without realtime.
 
 ## Can a person have more than one active emergency?
 

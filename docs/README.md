@@ -37,7 +37,7 @@ is the recommended frontend for this backend.
 - [Activation flow](bff/activation-flow.md)
 - [WhatsApp payloads](bff/whatsapp-payloads.md)
 - [Security](bff/security.md)
-- [Pusher and realtime](bff/pusher.md)
+- [Realtime ownership](bff/pusher.md)
 - [Deployment](bff/deployment.md)
 - [Upgrade guide](bff/upgrade.md)
 

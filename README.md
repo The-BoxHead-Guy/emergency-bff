@@ -72,13 +72,11 @@ it as `X-CSRF-Token` on unsafe requests; `POST /session` rotates it.
 
 ### `GET /config`
 
-Returns the route prefix, the public realtime configuration and the first CSRF
-token.
+Returns the route prefix and the first CSRF token.
 
 ```json
 {
   "route_prefix": "/de-bff/emergency",
-  "realtime": { "mode": "public", "pusher": { "key": "…", "cluster": "…" } },
   "csrf_token": "…"
 }
 ```
@@ -108,8 +106,7 @@ is none.
     "is_active": true,
     "is_simulated": false,
     "responders": []
-  },
-  "realtime": { "mode": "public", "pusher": { "…": "…" } }
+  }
 }
 ```
 
@@ -220,16 +217,12 @@ directly and replace any collaborator:
 
 ## Realtime
 
-Realtime delivery updates require two environment variables:
-
-```dotenv
-EMERGENCY_BFF_PUSHER_KEY=public-key
-EMERGENCY_BFF_PUSHER_CLUSTER=us2
-```
-
-The package exposes only the public key and cluster; the Pusher secret is never
-read. Channels are public and carry metadata only, so treat their events as
-hints and reconcile through `GET /current` or `POST /{id}/refresh`.
+Realtime delivery updates are published by the DataEmergencia API on public
+channels. The BFF does not own, forward or configure Pusher; it only proxies
+session and emergency reads. Configure the public Pusher key and cluster in the
+browser library's own mount options. Channels are public and carry metadata
+only, so treat their events as hints and reconcile through `GET /current` or
+`POST /{id}/refresh`.
 
 ## Example
 

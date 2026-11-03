@@ -15,7 +15,7 @@ sequenceDiagram
     participant WA as WhatsApp templates
 
     Browser->>BFF: GET /config
-    BFF-->>Browser: csrf_token, realtime
+    BFF-->>Browser: csrf_token
     Browser->>BFF: POST /session {code}
     BFF->>API: GET /v2/fmd/{code}/exists
     API-->>BFF: exists
@@ -108,7 +108,7 @@ emergency that no longer exists gets `404 emergency_not_found`.
 ### 7. Resume
 
 On page load, `GET /current` asks upstream for the active emergency by code. If
-one exists, the BFF stores and returns it and the frontend renders the realtime
+one exists, the BFF stores and returns it and the frontend renders the delivery
 status. If not, the session snapshot is cleared and the frontend stays idle.
 
 ### 8. Refresh and realtime

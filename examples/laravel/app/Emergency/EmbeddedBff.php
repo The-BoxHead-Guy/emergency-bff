@@ -13,7 +13,6 @@ use DataEmergencia\EmergencyBff\Emergency\EmergencyService;
 use DataEmergencia\EmergencyBff\Emergency\InMemoryIdempotencyStore;
 use DataEmergencia\EmergencyBff\Http\Kernel;
 use DataEmergencia\EmergencyBff\Http\Psr18ApiClient;
-use DataEmergencia\EmergencyBff\Realtime\RealtimeConfig;
 use DataEmergencia\EmergencyBff\Session\SessionManager;
 use DataEmergencia\EmergencyBff\WhatsApp\ResponderFactory;
 use DataEmergencia\EmergencyBff\WhatsApp\WhatsAppPayloadBuilder;
@@ -50,8 +49,6 @@ final class EmbeddedBff
             'timeout' => (int) config('services.emergency_bff.timeout', 10),
             'retryCount' => (int) config('services.emergency_bff.retry_count', 1),
             'sessionTtl' => (int) config('services.emergency_bff.session_ttl', 3600),
-            'pusherKey' => config('services.emergency_bff.pusher_key'),
-            'pusherCluster' => config('services.emergency_bff.pusher_cluster'),
             'qrBaseHost' => (string) config(
                 'services.emergency_bff.qr_base_host',
                 'zur.dataemergencia.com'
@@ -83,7 +80,6 @@ final class EmbeddedBff
             session: $session,
             validator: new CodeValidator($http),
             emergency: $service,
-            realtime: new RealtimeConfig($config),
             logger: $this->logger,
         );
     }

@@ -15,7 +15,6 @@ use DataEmergencia\EmergencyBff\Http\ApiResponse;
 use DataEmergencia\EmergencyBff\Http\Kernel;
 use DataEmergencia\EmergencyBff\Http\Request;
 use DataEmergencia\EmergencyBff\Http\Response;
-use DataEmergencia\EmergencyBff\Realtime\RealtimeConfig;
 use DataEmergencia\EmergencyBff\Session\SessionManager;
 use DataEmergencia\EmergencyBff\Support\RateLimiter;
 use DataEmergencia\EmergencyBff\Tests\Support\FakeApiClient;
@@ -39,8 +38,6 @@ final class KernelTest extends TestCase
         $this->config = new Config(
             apiKey: 'api-key',
             applicationIdentifier: 'app-id',
-            pusherKey: 'public-key',
-            pusherCluster: 'eu',
         );
     }
 
@@ -55,10 +52,8 @@ final class KernelTest extends TestCase
         $config = $kernel->handle(new Request('GET', '/de-bff/emergency/config'));
         self::assertSame(200, $config->status());
         self::assertSame('/de-bff/emergency', $config->body()['route_prefix']);
-        self::assertSame('public', $config->body()['realtime']['mode']);
-        self::assertSame('public-key', $config->body()['realtime']['pusher']['key']);
         self::assertSame(64, strlen($config->body()['csrf_token']));
-        self::assertArrayNotHasKey('secret', $config->body()['realtime']['pusher']);
+        self::assertArrayNotHasKey('realtime', $config->body());
         self::assertNotNull($config->headers()['X-Request-Id'] ?? null);
         self::assertSame('no-store', $config->headers()['Cache-Control']);
     }
@@ -79,6 +74,7 @@ final class KernelTest extends TestCase
         $current = $kernel->handle(new Request('GET', '/de-bff/emergency/current'));
         self::assertSame(200, $current->status());
         self::assertFalse($current->body()['active']);
+        self::assertArrayNotHasKey('realtime', $current->body());
 
         $activated = $kernel->handle($this->json('POST', '/de-bff/emergency/activate', [
             'geolocation' => ['coords' => ['latitude' => '4.7110', 'longitude' => '-74.0721']],
@@ -92,6 +88,7 @@ final class KernelTest extends TestCase
         $current = $kernel->handle(new Request('GET', '/de-bff/emergency/current'));
         self::assertTrue($current->body()['active']);
         self::assertSame($expected, $current->body()['emergency']['emergency_id']);
+        self::assertArrayNotHasKey('realtime', $current->body());
         self::assertIsArray($current->body()['emergency']['responders']);
         $this->assertResponderPayload($current->body()['emergency']['responders'][0], '42');
 
@@ -415,7 +412,6 @@ final class KernelTest extends TestCase
             session: $session,
             validator: new CodeValidator($client),
             emergency: $service,
-            realtime: new RealtimeConfig($this->config),
             limiter: $limiter,
         );
     }

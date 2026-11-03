@@ -47,8 +47,8 @@ Laravel, Symfony or Slim; you mount the provided `Kernel` or forward requests to
   (`EMERGENCY_BFF_API_ORIGIN`).
 - A per-customer API key and application identifier, issued by the
   DataEmergencia console. There is no shared key.
-- A public Pusher key and cluster if you want realtime delivery status. The
-  Pusher secret is never needed by this package.
+- No Pusher credentials. The API publishes realtime events, and the browser
+  library reads its own public Pusher settings.
 
 ## Next step
 

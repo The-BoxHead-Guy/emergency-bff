@@ -132,7 +132,6 @@ for `/config` if you need to verify session storage.
 - [ ] HTTPS terminates at the proxy; HTTP redirects to HTTPS.
 - [ ] `EMERGENCY_BFF_COOKIE_SECURE=true`.
 - [ ] Required credentials are present in the runtime environment.
-- [ ] `EMERGENCY_BFF_PUSHER_KEY` and `_CLUSTER` are set if realtime is wanted.
 - [ ] Document root is `public/`; `src/`, `vendor/` and `examples/` are not
       reachable.
 - [ ] Sessions use shared storage if more than one node serves traffic.

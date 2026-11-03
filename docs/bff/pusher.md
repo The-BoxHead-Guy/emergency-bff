@@ -2,33 +2,20 @@
 
 Applies to: integrators enabling live delivery status.
 
-The MVP uses **public Pusher channels**. The BFF exposes only the public key and
-cluster; the Pusher secret never leaves the server and is not read by this
-package.
+Realtime delivery updates are owned by the DataEmergencia API. The API is the
+only publisher of the WhatsApp events; the BFF only proxies session and
+emergency reads and does not expose or configure Pusher.
 
-## Configuration
+## Ownership
 
-```dotenv
-EMERGENCY_BFF_PUSHER_KEY=public-key
-EMERGENCY_BFF_PUSHER_CLUSTER=us2
-```
+- The API publishes `whatsapp.{recipientId}` events through `WhatsAppEvent`.
+- The BFF no longer returns a `realtime` block from `GET /config` or
+  `GET /current`, and it reads no Pusher credentials.
+- The browser library receives the public Pusher key and cluster through its own
+  mount configuration and subscribes directly to the API's channels.
 
-Both values are returned by `GET /config`:
-
-```json
-{
-  "mode": "public",
-  "pusher": {
-    "key": "public-key",
-    "cluster": "us2",
-    "channel_pattern": "whatsapp.{phone}"
-  }
-}
-```
-
-Both values must be set for realtime to be available. If either is empty,
-`GET /config` returns `null` for both and consumers keep working in pull mode
-through `GET /current` and `POST /{id}/refresh`.
+The Pusher secret never leaves the API. The BFF ships no Pusher values at all,
+so there is nothing to keep out of `GET /config`.
 
 ## Channel naming
 
@@ -69,19 +56,13 @@ bodies in channel names or event payloads.
 
 ## Post-MVP: private channels
 
-Private channels are intentionally out of scope for the MVP. The reserved
-endpoint is:
-
-```text
-<route prefix>/pusher/auth
-```
-
-It is not routed. A future version must:
+Private channels are intentionally out of scope for the MVP. The BFF routes no
+`/pusher/auth` endpoint. A future version must:
 
 1. Authenticate the session and verify emergency ownership.
 2. Authorize only the responder channels that belong to that emergency.
 3. Return a Pusher auth signature using a server-side secret.
-4. Keep the secret out of the browser and out of `GET /config`.
+4. Keep the secret out of the browser and out of the BFF.
 
 Do not implement a partial version of this endpoint; an auth endpoint that
 returns signatures for arbitrary channels is worse than public channels.

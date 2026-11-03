@@ -13,7 +13,6 @@ use DataEmergencia\EmergencyBff\Emergency\EmergencyService;
 use DataEmergencia\EmergencyBff\Emergency\InMemoryIdempotencyStore;
 use DataEmergencia\EmergencyBff\Http\Kernel;
 use DataEmergencia\EmergencyBff\Http\Psr18ApiClient;
-use DataEmergencia\EmergencyBff\Realtime\RealtimeConfig;
 use DataEmergencia\EmergencyBff\Session\NativeSessionStore;
 use DataEmergencia\EmergencyBff\Session\SessionManager;
 use DataEmergencia\EmergencyBff\WhatsApp\ResponderFactory;
@@ -65,7 +64,6 @@ final class Bootstrap
             session: $session,
             validator: new CodeValidator($http),
             emergency: $service,
-            realtime: new RealtimeConfig($config),
             logger: $logger,
         );
     }

@@ -23,8 +23,6 @@ final class ConfigTest extends TestCase
             'EMERGENCY_BFF_SESSION_TTL' => '120',
             'EMERGENCY_BFF_COOKIE_SECURE' => 'false',
             'EMERGENCY_BFF_COOKIE_SAME_SITE' => 'Strict',
-            'EMERGENCY_BFF_PUSHER_KEY' => 'public-key',
-            'EMERGENCY_BFF_PUSHER_CLUSTER' => 'eu',
         ]);
 
         self::assertSame('https://example.test', $config->apiOrigin);
@@ -37,8 +35,6 @@ final class ConfigTest extends TestCase
         self::assertSame(120, $config->sessionTtl);
         self::assertFalse($config->cookieSecure);
         self::assertSame('Strict', $config->cookieSameSite);
-        self::assertSame('public-key', $config->pusherKey);
-        self::assertSame('eu', $config->pusherCluster);
     }
 
     public function test_it_fails_fast_when_credentials_are_missing(): void

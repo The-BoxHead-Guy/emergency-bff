@@ -22,7 +22,6 @@ use DataEmergencia\EmergencyBff\Http\Middleware\CsrfMiddleware;
 use DataEmergencia\EmergencyBff\Http\Middleware\RateLimitMiddleware;
 use DataEmergencia\EmergencyBff\Http\Middleware\SameOriginMiddleware;
 use DataEmergencia\EmergencyBff\Http\Middleware\SessionMiddleware;
-use DataEmergencia\EmergencyBff\Realtime\RealtimeConfig;
 use DataEmergencia\EmergencyBff\Session\SessionManager;
 use DataEmergencia\EmergencyBff\Support\RateLimiter;
 use Psr\Log\LoggerInterface;
@@ -44,7 +43,6 @@ final class Kernel
         private readonly SessionManager $session,
         private readonly CodeValidator $validator,
         private readonly EmergencyService $emergency,
-        private readonly RealtimeConfig $realtime,
         private readonly ?LoggerInterface $logger = null,
         ?RateLimiter $limiter = null,
     ) {
@@ -152,7 +150,6 @@ final class Kernel
             ->add('GET', '/config', function (): Response {
                 return Response::json([
                     'route_prefix' => $this->config->routePrefix,
-                    'realtime' => $this->realtime->toArray(),
                     'csrf_token' => $this->session->csrfToken(),
                 ]);
             })
@@ -187,7 +184,6 @@ final class Kernel
                     return Response::json([
                         'active' => false,
                         'emergency' => null,
-                        'realtime' => $this->realtime->toArray(),
                     ]);
                 }
 
@@ -196,7 +192,6 @@ final class Kernel
                 return Response::json([
                     'active' => true,
                     'emergency' => $active,
-                    'realtime' => $this->realtime->toArray(),
                 ]);
             })
             ->add('POST', '/activate', function (Request $request): Response {

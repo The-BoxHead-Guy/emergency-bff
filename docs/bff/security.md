@@ -125,7 +125,8 @@ ownership check is still required.
 - [ ] Error logs forwarded with a retention policy.
 - [ ] Health check monitored from outside the host.
 - [ ] Rate limit reviewed against expected traffic.
-- [ ] Pusher secret absent from the BFF environment and the browser bundle.
+- [ ] Pusher secret absent from the BFF environment, the browser bundle and the
+      API responses the BFF proxies.
 
 ## Next step
 

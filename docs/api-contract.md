@@ -36,16 +36,16 @@ returns `401` before CSRF is checked. CSRF applies to `POST`, `PUT`, `PATCH` and
 
 ## Endpoints
 
-| Method   | Path            | Auth           | Purpose                                    |
-| -------- | --------------- | -------------- | ------------------------------------------ |
-| `GET`    | `/health`       | none           | Liveness and service name.                 |
-| `GET`    | `/config`       | none           | Route prefix, realtime config, CSRF token. |
-| `POST`   | `/session`      | none           | Validate a code and create the session.    |
-| `GET`    | `/current`      | session        | Active emergency for this identity.        |
-| `POST`   | `/activate`     | session + CSRF | Create a real emergency.                   |
-| `POST`   | `/simulacrum`   | session + CSRF | Send a test message.                       |
-| `POST`   | `/{id}/refresh` | session + CSRF | Re-read an emergency.                      |
-| `DELETE` | `/{id}`         | session + CSRF | Abort an emergency.                        |
+| Method   | Path            | Auth           | Purpose                                 |
+| -------- | --------------- | -------------- | --------------------------------------- |
+| `GET`    | `/health`       | none           | Liveness and service name.              |
+| `GET`    | `/config`       | none           | Route prefix and CSRF token.            |
+| `POST`   | `/session`      | none           | Validate a code and create the session. |
+| `GET`    | `/current`      | session        | Active emergency for this identity.     |
+| `POST`   | `/activate`     | session + CSRF | Create a real emergency.                |
+| `POST`   | `/simulacrum`   | session + CSRF | Send a test message.                    |
+| `POST`   | `/{id}/refresh` | session + CSRF | Re-read an emergency.                   |
+| `DELETE` | `/{id}`         | session + CSRF | Abort an emergency.                     |
 
 `{id}` is the upstream emergency identifier returned by activation or
 `GET /current`.
@@ -74,20 +74,11 @@ GET /config
 ```json
 {
   "route_prefix": "/de-bff/emergency",
-  "realtime": {
-    "mode": "public",
-    "pusher": {
-      "key": "public-key",
-      "cluster": "us2",
-      "channel_pattern": "whatsapp.{phone}"
-    }
-  },
   "csrf_token": "…"
 }
 ```
 
-`realtime` is `null` when Pusher is not configured. `csrf_token` is also issued
-by `POST /session`; use the newest value.
+`csrf_token` is also issued by `POST /session`; use the newest value.
 
 This endpoint is safe to call before a session exists. Do not cache it.
 
@@ -143,15 +134,14 @@ GET /current
     "created_at": "2026-10-28T14:05:00Z",
     "updated_at": "2026-10-28T14:06:00Z",
     "responders": [ … ]
-  },
-  "realtime": { … }
+  }
 }
 ```
 
 When no emergency exists:
 
 ```json
-{ "active": false, "emergency": null, "realtime": { … } }
+{ "active": false, "emergency": null }
 ```
 
 `GET /current` is how a reload discovers an emergency. It is also the
@@ -435,7 +425,7 @@ sequenceDiagram
   participant W as WhatsApp
 
   B->>F: GET /config
-  F-->>B: route prefix, realtime, csrf
+  F-->>B: route prefix, csrf
   B->>F: POST /session {code}
   F->>U: GET /v2/fmd/{code}/exists
   U-->>F: true

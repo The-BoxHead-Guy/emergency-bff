@@ -6,6 +6,21 @@ and [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-03
+
+### Removed
+
+- The `realtime` block from the `GET /config` and `GET /current` responses.
+- `DataEmergencia\EmergencyBff\Realtime\RealtimeConfig` and its wiring.
+- The `EMERGENCY_BFF_PUSHER_KEY` and `EMERGENCY_BFF_PUSHER_CLUSTER` environment
+  variables, along with `Config::$pusherKey` and `Config::$pusherCluster`.
+
+### Changed
+
+- Realtime ownership now sits with the API and the browser library:
+  documentation points at the API broadcaster and the library's `realtime` mount
+  option instead of BFF-provided Pusher credentials.
+
 ## [0.1.5] - 2026-11-03
 
 ### Removed

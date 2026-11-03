@@ -150,9 +150,10 @@ long, then retry. Do not loop on activation.
 
 ## The panel shows no realtime updates
 
-- `GET /config` must return a non-null `realtime` object. If
-  `EMERGENCY_BFF_PUSHER_KEY` or `EMERGENCY_BFF_PUSHER_CLUSTER` is missing,
-  realtime is disabled by design.
+- Configure the public Pusher key and cluster in the browser library's
+  `realtime` mount option. The BFF no longer returns them.
+- Confirm the API's broadcaster is publishing the `whatsapp.{recipientId}`
+  events for the deployment.
 - Check that `wss://` traffic to Pusher is allowed by the network.
 - Realtime is metadata only. Refresh still converges through `GET /current`
   when the tab regains focus or the network reconnects.
