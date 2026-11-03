@@ -92,10 +92,15 @@ final class KernelTest extends TestCase
         $current = $kernel->handle(new Request('GET', '/de-bff/emergency/current'));
         self::assertTrue($current->body()['active']);
         self::assertSame($expected, $current->body()['emergency']['emergency_id']);
+        self::assertIsArray($current->body()['emergency']['responders']);
+        $this->assertResponderPayload($current->body()['emergency']['responders'][0], '42');
 
         $refreshed = $kernel->handle($this->json('POST', '/de-bff/emergency/'.$expected.'/refresh', [], $token));
         self::assertSame(200, $refreshed->status());
         self::assertSame($expected, $refreshed->body()['emergency']['emergency_id']);
+        self::assertIsArray($refreshed->body()['emergency']);
+        self::assertIsArray($refreshed->body()['responders']);
+        $this->assertResponderPayload($refreshed->body()['responders'][0], '42');
 
         $aborted = $kernel->handle($this->json('DELETE', '/de-bff/emergency/'.$expected, [], $token));
         self::assertSame(200, $aborted->status());
@@ -249,6 +254,28 @@ final class KernelTest extends TestCase
         ];
     }
 
+    /**
+     * @param array<string, mixed> $responder
+     */
+    private function assertResponderPayload(array $responder, ?string $expectedMessageId = null): void
+    {
+        foreach (['phone', 'name', 'sent', 'delivered', 'read', 'failed', 'message_id'] as $key) {
+            self::assertArrayHasKey($key, $responder);
+        }
+
+        self::assertIsString($responder['phone']);
+        self::assertIsString($responder['name']);
+        self::assertIsBool($responder['sent']);
+        self::assertIsBool($responder['delivered']);
+        self::assertIsBool($responder['read']);
+        self::assertIsBool($responder['failed']);
+        self::assertTrue($responder['message_id'] === null || is_string($responder['message_id']));
+
+        if ($expectedMessageId !== null) {
+            self::assertSame($expectedMessageId, $responder['message_id']);
+        }
+    }
+
     private function csrfToken(Kernel $kernel): string
     {
         $response = $kernel->handle(new Request('GET', '/de-bff/emergency/config'));
@@ -297,11 +324,27 @@ final class KernelTest extends TestCase
             }
 
             if ($method === 'POST' && str_contains($path, 'whatsapp/templates/send')) {
-                return new ApiResponse(200, ['data' => ['message_id' => 'wamid.1']]);
+                return new ApiResponse(200, $this->fixture('responses/send-success.json'));
             }
 
             if ($method === 'POST' && $path === '/v2/emergency') {
-                $active = ['emergency_id' => $emergencyId, 'is_active' => true];
+                $active = [
+                    'emergency_id' => $emergencyId,
+                    'is_active' => true,
+                    'responders' => [
+                        [
+                            'id' => 5011,
+                            'emergency_id' => $emergencyId,
+                            'message_id' => 42,
+                            'name' => 'Grace Hopper',
+                            'phone' => '573001234567',
+                            'sent' => true,
+                            'delivered' => false,
+                            'read' => false,
+                            'failed' => false,
+                        ],
+                    ],
+                ];
 
                 return new ApiResponse(201, ['data' => ['attributes' => $active]]);
             }

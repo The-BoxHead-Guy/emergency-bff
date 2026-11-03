@@ -81,6 +81,73 @@ repository, so every BFF payload exposes the identifier as a string. The value i
 `404` on show or delete becomes `EmergencyNotFoundException`. `404` on the
 active lookup becomes `null`, which lets `GET /current` return `active: false`.
 
+Responder references follow the same boundary rule: `responders[*].message_id`
+is the upstream internal `whatsapp_messages.id`, an integer. Every proxied
+response exposes it as a decimal string (`42` → `"42"`, `null` → `null`) so the
+browser contract stays `message_id: string | null`.
+
+## WhatsApp send response
+
+`POST /v2/whatsapp/templates/send` returns a JSON:API resource with two
+different identifiers:
+
+```json
+{
+  "meta": { "status": 200 },
+  "data": {
+    "type": "response",
+    "id": "success|42",
+    "attributes": {
+      "success": true,
+      "id": 42,
+      "details": {
+        "messages": [
+          {
+            "id": "wamid.HBgMNTg0MTIxMjM0NTY3FQIAERgS...",
+            "message_status": "accepted"
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+- `data.attributes.details.messages[0].id` is the **WAMID** (Meta's message id).
+  It is the only value the BFF sends to `POST /v2/emergency` as
+  `responders[].message_id`.
+- `data.attributes.id` is the internal `whatsapp_messages.id` (integer).
+- `data.id` is a synthetic envelope id (for example `"success|42"`); it changes
+  per response and is never a WAMID.
+- `meta.status` is hard-coded to `200`; the HTTP status is authoritative.
+
+`MessageResult` reads the WAMID from the real path and never falls back to the
+internal or synthetic ids. A numeric `message_id` is not a WAMID and resolves to
+`null`.
+
+The emergency response uses the internal integer instead:
+
+```json
+{
+  "data": {
+    "attributes": {
+      "emergency_id": 987,
+      "responders": [
+        {
+          "id": 5011,
+          "message_id": 42,
+          "name": "María Pérez",
+          "phone": "584121234567"
+        }
+      ]
+    }
+  }
+}
+```
+
+That `message_id` is a display/correlation reference normalized to `"42"`; it
+must never be fed back into the create request, which expects the WAMID.
+
 ## HTTP behavior
 
 - Timeout applies to connect and total request time.

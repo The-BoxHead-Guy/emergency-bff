@@ -1,0 +1,32 @@
+{
+  "meta": {
+    "timestamp": "2026-11-03T14:25:28+00:00",
+    "api_version": "2.0.0",
+    "status": 200,
+    "copyright": "© 2026 api.dataemergencia.com. All rights reserved."
+  },
+  "data": {
+    "type": "response",
+    "id": "success|42",
+    "attributes": {
+      "success": true,
+      "message": "WhatsApp template message sent successfully.",
+      "id": 42,
+      "details": {
+        "messaging_product": "whatsapp",
+        "contacts": [
+          {
+            "input": "+584121234567",
+            "wa_id": "584121234567"
+          }
+        ],
+        "messages": [
+          {
+            "id": "wamid.1",
+            "message_status": "accepted"
+          }
+        ]
+      }
+    }
+  }
+}

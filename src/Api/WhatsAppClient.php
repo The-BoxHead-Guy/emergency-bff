@@ -35,6 +35,10 @@ final class WhatsAppClient
 
         $data = $response->body()['data'] ?? null;
 
+        if (is_array($data) && isset($data['attributes']) && is_array($data['attributes'])) {
+            $data = $data['attributes'];
+        }
+
         return MessageResult::sent(
             is_array($data) ? $data : $response->body(),
             $response->status(),

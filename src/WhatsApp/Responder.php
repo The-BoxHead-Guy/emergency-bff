@@ -28,7 +28,7 @@ final class Responder
         return new self(
             phone: self::phoneFromContact($contact),
             name: is_string($contact['name'] ?? null) ? $contact['name'] : '',
-            messageId: self::stringOrNull($contact['messageId'] ?? $contact['message_id'] ?? null),
+            messageId: self::messageIdOrNull($contact['messageId'] ?? $contact['message_id'] ?? null),
         );
     }
 
@@ -74,8 +74,12 @@ final class Responder
         ];
     }
 
-    private static function stringOrNull(mixed $value): ?string
+    private static function messageIdOrNull(mixed $value): ?string
     {
-        return is_string($value) && $value !== '' ? $value : null;
+        return match (true) {
+            is_int($value) => (string) $value,
+            is_string($value) && $value !== '' => $value,
+            default => null,
+        };
     }
 }

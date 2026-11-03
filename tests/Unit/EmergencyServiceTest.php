@@ -81,7 +81,7 @@ final class EmergencyServiceTest extends TestCase
 
             if ($method === 'POST' && str_contains($path, 'whatsapp/templates/send')) {
                 return $whatsApp === null
-                    ? new ApiResponse(200, ['success' => true, 'data' => ['message_id' => 'wamid.1']])
+                    ? new ApiResponse(200, $this->fixture('responses/send-success.json'))
                     : $whatsApp($body);
             }
 
@@ -127,6 +127,24 @@ final class EmergencyServiceTest extends TestCase
         self::assertSame('wamid.1', $created['responders'][0]['message_id']);
     }
 
+    public function test_it_sends_the_details_wamid_to_the_create_endpoint(): void
+    {
+        $envelope = $this->fixture('responses/send-success.json');
+        $envelope['data']['id'] = 'success|999';
+        $envelope['data']['attributes']['id'] = 999;
+        $envelope['data']['attributes']['details']['messages'][0]['id'] = 'wamid.real';
+
+        [$service, $client] = $this->service($this->client(
+            whatsApp: static fn (): ApiResponse => new ApiResponse(200, $envelope),
+        ));
+
+        $service->activate(Identity::fromCode('DABC12'), []);
+
+        $created = $client->callsTo('POST', '/v2/emergency')[0]['body'];
+
+        self::assertSame('wamid.real', $created['responders'][0]['message_id']);
+    }
+
     public function test_it_returns_a_numeric_upstream_id_as_a_string(): void
     {
         [$service] = $this->service($this->client(emergency: self::EMERGENCY_NUMERIC));
@@ -145,7 +163,7 @@ final class EmergencyServiceTest extends TestCase
                 $calls++;
 
                 return $calls === 1
-                    ? new ApiResponse(200, ['data' => ['message_id' => 'wamid.1']])
+                    ? new ApiResponse(200, $this->fixture('responses/send-success.json'))
                     : throw ApiException::fromResponse(new ApiResponse(422, ['message' => 'Invalid number']));
             },
             profile: $this->twoContactProfile(),

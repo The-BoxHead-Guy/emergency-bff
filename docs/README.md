@@ -54,6 +54,7 @@ is the recommended frontend for this backend.
 
 ### Releases
 
+- [Releasing the BFF](release/releasing.md)
 - [Versioning](release/versioning.md)
 
 ### Contributor documentation
@@ -70,5 +71,5 @@ The browser panel is documented in its own repository:
 
 ## Version
 
-These docs describe `0.1.1` and are versioned with the package. The quickstart
+These docs describe `0.1.2` and are versioned with the package. The quickstart
 is tested against the latest published tag.

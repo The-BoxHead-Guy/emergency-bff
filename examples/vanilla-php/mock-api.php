@@ -124,9 +124,24 @@ if ($method === 'POST' && $path === '/v2/whatsapp/templates/send') {
     );
 
     $json([
-        'success' => true,
+        'meta' => ['status' => 200],
         'data' => [
-            'message_id' => 'wamid.demo.'.bin2hex(random_bytes(4)),
+            'type' => 'response',
+            'id' => 'success|'.random_int(1, 999),
+            'attributes' => [
+                'success' => true,
+                'message' => 'WhatsApp template message sent successfully.',
+                'id' => random_int(1, 999),
+                'details' => [
+                    'messaging_product' => 'whatsapp',
+                    'messages' => [
+                        [
+                            'id' => 'wamid.demo.'.bin2hex(random_bytes(4)),
+                            'message_status' => 'accepted',
+                        ],
+                    ],
+                ],
+            ],
         ],
     ]);
 }

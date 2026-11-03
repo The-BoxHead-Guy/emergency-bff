@@ -100,12 +100,12 @@ final class EmergencyRepository
         $attributes = $body['data']['attributes'] ?? $body['attributes'] ?? null;
 
         if (is_array($attributes)) {
-            return $this->normalizeId($attributes);
+            return $this->normalizeResponders($this->normalizeId($attributes));
         }
 
         $data = $body['data'] ?? null;
 
-        return $this->normalizeId(is_array($data) ? $data : $body);
+        return $this->normalizeResponders($this->normalizeId(is_array($data) ? $data : $body));
     }
 
     /**
@@ -119,15 +119,43 @@ final class EmergencyRepository
                 continue;
             }
 
-            $value = $shape[$key];
-
-            $shape[$key] = match (true) {
-                is_int($value) => (string) $value,
-                is_string($value) && $value !== '' => $value,
-                default => null,
-            };
+            $shape[$key] = $this->identifier($shape[$key]);
         }
 
         return $shape;
+    }
+
+    /**
+     * @param array<string, mixed> $shape
+     * @return array<string, mixed>
+     */
+    private function normalizeResponders(array $shape): array
+    {
+        $responders = $shape['responders'] ?? null;
+
+        if (!is_array($responders)) {
+            return $shape;
+        }
+
+        $shape['responders'] = array_map(function (mixed $responder): mixed {
+            if (!is_array($responder)) {
+                return $responder;
+            }
+
+            $responder['message_id'] = $this->identifier($responder['message_id'] ?? null);
+
+            return $responder;
+        }, $responders);
+
+        return $shape;
+    }
+
+    private function identifier(mixed $value): ?string
+    {
+        return match (true) {
+            is_int($value) => (string) $value,
+            is_string($value) && $value !== '' => $value,
+            default => null,
+        };
     }
 }

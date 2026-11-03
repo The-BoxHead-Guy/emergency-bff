@@ -125,6 +125,31 @@ final class ProfileAndWhatsAppDataTest extends TestCase
         ], $responders[0]->toArray());
     }
 
+    public function test_it_coerces_numeric_contact_message_ids(): void
+    {
+        $responders = (new ResponderFactory())->createFromContacts([
+            [
+                'name' => 'Numeric',
+                'phones' => [['area_code' => '+57', 'number' => '3001234567']],
+                'messageId' => 42,
+            ],
+            [
+                'name' => 'Numeric snake case',
+                'phones' => [['area_code' => '+57', 'number' => '3001234568']],
+                'message_id' => 43,
+            ],
+            [
+                'name' => 'Non scalar',
+                'phones' => [['area_code' => '+57', 'number' => '3001234569']],
+                'messageId' => ['42'],
+            ],
+        ]);
+
+        self::assertSame('42', $responders[0]->messageId);
+        self::assertSame('43', $responders[1]->messageId);
+        self::assertNull($responders[2]->messageId);
+    }
+
     public function test_it_returns_an_empty_responder_for_an_empty_contact(): void
     {
         $responder = Responder::fromContact([]);

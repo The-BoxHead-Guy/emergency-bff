@@ -267,11 +267,36 @@ X-CSRF-Token: …
     "initiator_id": "DABC12",
     "is_active": true,
     "is_simulated": false,
-    "responders": [ … ]
+    "responders": [
+      {
+        "phone": "573001234567",
+        "name": "Ana Pérez",
+        "sent": true,
+        "delivered": false,
+        "read": false,
+        "failed": false,
+        "message_id": "42"
+      }
+    ]
   },
-  "responders": [ … ]
+  "responders": [
+    {
+      "phone": "573001234567",
+      "name": "Ana Pérez",
+      "sent": true,
+      "delivered": false,
+      "read": false,
+      "failed": false,
+      "message_id": "42"
+    }
+  ]
 }
 ```
+
+On `POST /{id}/refresh` (and `GET /current`), `message_id` is the upstream
+internal message id, exposed as a decimal string. It correlates the responder
+with delivery state; it is **not** a WAMID and must not be sent back to the
+create endpoint.
 
 `404 emergency_not_found` if upstream no longer has the emergency.
 
@@ -319,9 +344,16 @@ Errors: `404 emergency_not_found`, `403 emergency_forbidden`,
   "delivered": true,
   "read": false,
   "failed": false,
-  "message_id": "wamid.…"
+  "message_id": "42"
 }
 ```
+
+`message_id` is always `string | null`, but its meaning depends on the
+endpoint. Activation, simulacrum and abort responses carry the WhatsApp
+**WAMID** returned by the send endpoint (for example `wamid.…`). `GET /current`
+and `POST /{id}/refresh` carry the upstream **internal** message id, normalized
+to a decimal string (`42` → `"42"`). The internal id is a display/correlation
+value and must never be fed back into `POST /v2/emergency`.
 
 Phones are digits with the leading `+` removed, as used by the upstream API.
 

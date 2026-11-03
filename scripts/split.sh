@@ -22,17 +22,18 @@ Usage: bash scripts/split.sh <version> [options]
   <version>        Release version in X.Y.Z form, for example 0.1.0
   --push           Commit and push the mirror plus the split tag (default: dry run)
   --yes, -y        Skip the interactive confirmation (required when not a TTY)
-  --skip-tests     Skip PHPUnit (Composer validation and php -l still run)
   --keep           Keep the temporary split checkout for inspection
   --remote <url>   Split repository remote (default: SPLIT_REMOTE or the SSH URL)
   -h, --help       Show this help
 
 The script:
   1. Refuses to run when the package has uncommitted or untracked files.
-  2. Runs composer validate --strict, php -l and PHPUnit.
-  3. Mirrors the committed package tree into a clone of the split repository.
-  4. Shows the exact changes, then pushes main and v<version> only with --push.
-  5. Creates the local monorepo tag php-v<version> (never pushes it).
+  2. Mirrors the committed package tree into a clone of the split repository.
+  3. Shows the exact changes, then pushes main and v<version> only with --push.
+  4. Creates the local monorepo tag emergency-bff-v<version> (never pushes it).
+
+Verification (composer validate, php -l, PHPUnit) belongs to CI and is not
+repeated here.
 
 Environment:
   SPLIT_REMOTE     Overrides the split repository remote.
@@ -85,10 +86,6 @@ info() {
   printf '  %sℹ%s %s\n' "$CYAN" "$RESET" "$*"
 }
 
-warn() {
-  printf '  %s▲%s %s\n' "$YELLOW" "$RESET" "$*"
-}
-
 die() {
   printf '\n  %s✖ error:%s %s\n' "$RED$BOLD" "$RESET" "$*" >&2
   exit 1
@@ -97,7 +94,6 @@ die() {
 VERSION=""
 PUSH=false
 ASSUME_YES=false
-SKIP_TESTS=false
 KEEP=false
 REMOTE="${SPLIT_REMOTE:-$DEFAULT_REMOTE}"
 
@@ -105,7 +101,6 @@ while (($#)); do
   case "$1" in
     --push) PUSH=true ;;
     --yes | -y) ASSUME_YES=true ;;
-    --skip-tests) SKIP_TESTS=true ;;
     --keep) KEEP=true ;;
     --remote)
       shift
@@ -144,7 +139,7 @@ banner
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)"
 PKG="$ROOT/packages/emergency-bff"
-TAG="php-v$VERSION"
+TAG="emergency-bff-v$VERSION"
 SPLIT_TAG="v$VERSION"
 
 [[ -f "$PKG/composer.json" ]] || die "packages/emergency-bff/composer.json not found"
@@ -169,22 +164,6 @@ fi
 grep -q "## \[$VERSION\]" "$PKG/CHANGELOG.md" ||
   die "CHANGELOG.md has no '## [$VERSION]' entry"
 ok "Package identity and changelog entry are valid"
-
-(cd "$PKG" && composer validate --strict --no-interaction >/dev/null)
-ok "composer.json is valid"
-
-(cd "$PKG" &&
-  find src examples public -name '*.php' -print0 | xargs -0 -n1 php -l >/dev/null)
-ok "PHP syntax is valid"
-
-if [[ "$SKIP_TESTS" == false ]]; then
-  [[ -x "$PKG/vendor/bin/phpunit" ]] ||
-    die "vendor/bin/phpunit is missing; run 'composer install' in $PKG"
-  (cd "$PKG" && vendor/bin/phpunit >/dev/null)
-  ok "PHPUnit passed"
-else
-  warn "PHPUnit skipped (--skip-tests)"
-fi
 
 SOURCE_REF="HEAD"
 if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then

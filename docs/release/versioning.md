@@ -24,6 +24,17 @@ the meaning of an existing field is breaking.
 Release tags use `vX.Y.Z`, for example `v0.1.0`. Packagist normalises the
 leading `v` and exposes the version as `0.1.0`.
 
+The tag is created in the monorepo with a project-scoped prefix and mirrored to
+the split repository without it:
+
+| Monorepo tag           | Split / Packagist tag |
+| ---------------------- | --------------------- |
+| `emergency-bff-v0.1.3` | `v0.1.3`              |
+
+The prefix keeps several packages releasable from one monorepo: only
+`emergency-bff-v*` starts the BFF split workflow. The old `php-v*` prefix is
+historical and must not be reused.
+
 | Release | Tag      | Composer constraint |
 | ------- | -------- | ------------------- |
 | `0.1.0` | `v0.1.0` | `^0.1`              |
@@ -59,5 +70,6 @@ the version, for example "since 0.2.0".
 
 ## Related
 
+- [Releasing the BFF](releasing.md)
 - [Upgrade guide](../bff/upgrade.md)
 - [API contract](../api-contract.md)

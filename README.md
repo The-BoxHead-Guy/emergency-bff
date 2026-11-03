@@ -155,9 +155,23 @@ Returns the current upstream state for an emergency.
 ```json
 {
   "emergency": { "emergency_id": "EMG123456" },
-  "responders": []
+  "responders": [
+    {
+      "phone": "573001234567",
+      "name": "Grace Hopper",
+      "sent": true,
+      "delivered": false,
+      "read": false,
+      "failed": false,
+      "message_id": "42"
+    }
+  ]
 }
 ```
+
+On activation, `message_id` is the WhatsApp WAMID returned by the send
+endpoint. On `GET /current` and `POST /{id}/refresh`, it is the upstream
+internal message id normalized to a decimal string. Both are `string | null`.
 
 ### `DELETE /{id}`
 
@@ -227,6 +241,21 @@ composer validate --strict
 composer install
 composer test
 ```
+
+## Releasing
+
+The BFF is published from the split repository
+`The-BoxHead-Guy/emergency-bff` and consumed through Packagist. The full runbook
+is [Releasing the BFF](docs/release/releasing.md). The short version:
+
+```bash
+git tag -a emergency-bff-v0.1.3 -m "release: 0.1.3"
+git push origin emergency-bff-v0.1.3
+```
+
+The tag push runs the split workflow, which mirrors `packages/emergency-bff` and
+pushes the split tag `v0.1.3`; Packagist picks it up from there. `composer.json`
+has no `version` field by design.
 
 ## Documentation
 

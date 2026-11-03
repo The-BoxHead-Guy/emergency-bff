@@ -6,6 +6,22 @@ and [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.3] - 2016-11-03
+
+### Changed
+
+- The manual split script no longer repeats composer validation, PHP syntax
+  checks or PHPUnit; CI owns verification so releases mirror and push faster.
+
+### Fixed
+
+- Read the WhatsApp WAMID from `data.attributes.details.messages[0].id`
+  instead of the synthetic envelope id, so `POST /v2/emergency` can resolve the
+  message reference.
+- Normalized proxied responder `message_id` values from the upstream internal
+  integer to a decimal string, so `/current` and `/refresh` no longer fail the
+  client's `string | null` contract.
+
 ## [0.1.2] - 2026-10-30
 
 ### Changed

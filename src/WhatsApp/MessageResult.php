@@ -37,11 +37,48 @@ final class MessageResult
         return new self(false, null, $status, $error);
     }
 
+    /**
+     * Returns the WhatsApp WAMID from the send response.
+     */
     public function messageId(): ?string
     {
-        $id = $this->data['message_id'] ?? $this->data['id'] ?? $this->data['messages'][0]['id'] ?? null;
+        return $this->wamid($this->data);
+    }
 
-        return is_string($id) && $id !== '' ? $id : null;
+    /**
+     * @param array<string, mixed>|null $data
+     */
+    private function wamid(?array $data): ?string
+    {
+        if ($data === null) {
+            return null;
+        }
+
+        $paths = [
+            ['attributes', 'details', 'messages', 0, 'id'],
+            ['details', 'messages', 0, 'id'],
+            ['messages', 0, 'id'],
+            ['message_id'],
+            ['attributes', 'message_id'],
+        ];
+
+        foreach ($paths as $path) {
+            $value = $data;
+
+            foreach ($path as $segment) {
+                if (!is_array($value) || !array_key_exists($segment, $value)) {
+                    continue 2;
+                }
+
+                $value = $value[$segment];
+            }
+
+            if (is_string($value) && $value !== '' && !is_numeric($value)) {
+                return $value;
+            }
+        }
+
+        return null;
     }
 
     /**
