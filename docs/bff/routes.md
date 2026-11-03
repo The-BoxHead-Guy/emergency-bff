@@ -176,8 +176,7 @@ frontends should block that case in the UI.
 
 ```json
 {
-  "emergency": { "emergency_id": "EMG123456", "…": "…" },
-  "responders": []
+  "emergency": { "emergency_id": "EMG123456", "…": "…" }
 }
 ```
 

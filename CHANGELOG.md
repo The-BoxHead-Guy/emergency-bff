@@ -6,7 +6,14 @@ and [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.1.4] - 2026-11-04]
+## [0.1.5] - 2026-11-03
+
+### Removed
+
+- Top-level `responders` from the `POST /{id}/refresh` response. Responders
+  remain available at `emergency.responders`.
+
+## [0.1.4] - 2026-11-03
 
 ### Fixed
 

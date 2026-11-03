@@ -154,18 +154,20 @@ Returns the current upstream state for an emergency.
 
 ```json
 {
-  "emergency": { "emergency_id": "EMG123456" },
-  "responders": [
-    {
-      "phone": "573001234567",
-      "name": "Grace Hopper",
-      "sent": true,
-      "delivered": false,
-      "read": false,
-      "failed": false,
-      "message_id": "42"
-    }
-  ]
+  "emergency": {
+    "emergency_id": "EMG123456",
+    "responders": [
+      {
+        "phone": "573001234567",
+        "name": "Grace Hopper",
+        "sent": true,
+        "delivered": false,
+        "read": false,
+        "failed": false,
+        "message_id": "42"
+      }
+    ]
+  }
 }
 ```
 

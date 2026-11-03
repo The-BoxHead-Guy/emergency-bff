@@ -225,7 +225,6 @@ final class Kernel
 
                 return Response::json([
                     'emergency' => $snapshot,
-                    'responders' => $snapshot['responders'] ?? [],
                 ]);
             })
             ->add('DELETE', '/{id}', function (Request $request, array $params): Response {

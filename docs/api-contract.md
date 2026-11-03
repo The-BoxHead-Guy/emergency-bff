@@ -283,18 +283,7 @@ X-CSRF-Token: …
         "message_id": "42"
       }
     ]
-  },
-  "responders": [
-    {
-      "phone": "573001234567",
-      "name": "Ana Pérez",
-      "sent": true,
-      "delivered": false,
-      "read": false,
-      "failed": false,
-      "message_id": "42"
-    }
-  ]
+  }
 }
 ```
 

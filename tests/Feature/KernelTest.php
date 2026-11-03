@@ -99,8 +99,9 @@ final class KernelTest extends TestCase
         self::assertSame(200, $refreshed->status());
         self::assertSame($expected, $refreshed->body()['emergency']['emergency_id']);
         self::assertIsArray($refreshed->body()['emergency']);
-        self::assertIsArray($refreshed->body()['responders']);
-        $this->assertResponderPayload($refreshed->body()['responders'][0], '42');
+        self::assertArrayNotHasKey('responders', $refreshed->body());
+        self::assertIsArray($refreshed->body()['emergency']['responders']);
+        $this->assertResponderPayload($refreshed->body()['emergency']['responders'][0], '42');
 
         $aborted = $kernel->handle($this->json('DELETE', '/de-bff/emergency/'.$expected, [], $token));
         self::assertSame(200, $aborted->status());
