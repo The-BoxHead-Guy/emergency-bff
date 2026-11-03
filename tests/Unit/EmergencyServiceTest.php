@@ -197,6 +197,56 @@ final class EmergencyServiceTest extends TestCase
         }
     }
 
+    public function test_a_send_response_without_a_wamid_counts_as_a_failure(): void
+    {
+        $client = $this->client(
+            whatsApp: fn (): ApiResponse => new ApiResponse(200, $this->sendResponseWithoutWamid()),
+        );
+
+        [$service] = $this->service($client);
+
+        $this->expectException(WhatsAppFailureException::class);
+
+        try {
+            $service->activate(Identity::fromCode('DABC12'), []);
+        } finally {
+            self::assertCount(0, $client->callsTo('POST', '/v2/emergency'));
+        }
+    }
+
+    public function test_a_responder_without_a_wamid_is_not_reported_as_sent(): void
+    {
+        $calls = 0;
+        $client = $this->client(
+            whatsApp: function () use (&$calls): ApiResponse {
+                $calls++;
+
+                return $calls === 1
+                    ? new ApiResponse(200, $this->fixture('responses/send-success.json'))
+                    : new ApiResponse(200, $this->sendResponseWithoutWamid());
+            },
+            profile: $this->twoContactProfile(),
+        );
+
+        [$service] = $this->service($client);
+        $result = $service->activate(Identity::fromCode('DABC12'), []);
+
+        self::assertTrue($result->responders[0]->sent);
+        self::assertFalse($result->responders[1]->sent);
+        self::assertTrue($result->responders[1]->failed);
+        self::assertNull($result->responders[1]->messageId);
+
+        self::assertCount(1, $result->failures);
+        self::assertSame('447700900123', $result->failures[0]['phone']);
+        self::assertSame(200, $result->failures[0]['status']);
+        self::assertArrayHasKey('message', $result->failures[0]);
+
+        $created = $client->callsTo('POST', '/v2/emergency')[0]['body'];
+        self::assertFalse($created['responders'][1]['sent']);
+        self::assertTrue($created['responders'][1]['failed']);
+        self::assertNull($created['responders'][1]['message_id']);
+    }
+
     public function test_it_refuses_to_activate_when_an_emergency_is_already_active(): void
     {
         [$service, $client] = $this->service($this->client(active: ['emergency_id' => 'EMG9']));
@@ -292,5 +342,18 @@ final class EmergencyServiceTest extends TestCase
         ];
 
         return $profile;
+    }
+
+    /**
+     * A 2xx send envelope whose only message id is internal, never a WAMID.
+     *
+     * @return array<string, mixed>
+     */
+    private function sendResponseWithoutWamid(): array
+    {
+        $body = $this->fixture('responses/send-success.json');
+        $body['data']['attributes']['details']['messages'][0]['id'] = 42;
+
+        return $body;
     }
 }

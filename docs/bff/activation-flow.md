@@ -80,9 +80,15 @@ coordinates. It sends each message independently and records `sent`,
 The QR code in the emergency template is the first valid product code, or the
 identity code when no product code is available.
 
+A send counts as successful only when the API returns a valid `wamid.`-prefixed
+id. A `2xx` response without one is recorded as a failure for that responder
+(`sent: false`, `failed: true`, `message_id: null`), because a responder must
+never be reported as sent without the reference webhooks match on.
+
 If every send fails, the BFF returns `502 whatsapp_delivery_failed` and does not
 create the upstream emergency. If some fail, the emergency is created and the
-response has `partial_failure: true` and a `failures` array.
+response has `partial_failure: true` and a `failures` array whose entry keeps the
+real HTTP status.
 
 ### 5. Emergency creation
 

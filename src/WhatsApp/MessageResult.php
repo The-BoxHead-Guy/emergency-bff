@@ -73,7 +73,7 @@ final class MessageResult
                 $value = $value[$segment];
             }
 
-            if (is_string($value) && $value !== '' && !is_numeric($value)) {
+            if (is_string($value) && str_starts_with($value, 'wamid.') && $value !== 'wamid.') {
                 return $value;
             }
         }

@@ -60,4 +60,54 @@ final class MessageResultTest extends TestCase
             'details' => ['messages' => [['id' => '42']]],
         ])->messageId());
     }
+
+    public function test_it_accepts_a_real_wamid_across_the_supported_envelopes(): void
+    {
+        $wamid = 'wamid.HBgMNTg0MTIxMjM0NTY3FQIAERgS';
+
+        self::assertSame($wamid, MessageResult::sent([
+            'attributes' => ['details' => ['messages' => [['id' => $wamid]]]],
+        ])->messageId());
+        self::assertSame($wamid, MessageResult::sent([
+            'details' => ['messages' => [['id' => $wamid]]],
+        ])->messageId());
+        self::assertSame($wamid, MessageResult::sent([
+            'messages' => [['id' => $wamid]],
+        ])->messageId());
+        self::assertSame($wamid, MessageResult::sent([
+            'attributes' => ['message_id' => $wamid],
+        ])->messageId());
+    }
+
+    public function test_it_rejects_a_non_prefixed_id(): void
+    {
+        self::assertNull(MessageResult::sent(['message_id' => 'internal-id'])->messageId());
+        self::assertNull(MessageResult::sent([
+            'details' => ['messages' => [['id' => 'a1b2c3d4-0000-0000-0000-000000000000']]],
+        ])->messageId());
+        self::assertNull(MessageResult::sent([
+            'attributes' => ['details' => ['messages' => [['id' => 'success|42']]]],
+        ])->messageId());
+    }
+
+    public function test_it_rejects_a_bare_wamid_prefix(): void
+    {
+        self::assertNull(MessageResult::sent(['message_id' => 'wamid.'])->messageId());
+        self::assertNull(MessageResult::sent([
+            'details' => ['messages' => [['id' => 'wamid.']]],
+        ])->messageId());
+    }
+
+    public function test_it_rejects_numeric_ids_across_the_supported_envelopes(): void
+    {
+        self::assertNull(MessageResult::sent([
+            'attributes' => ['details' => ['messages' => [['id' => 42]]]],
+        ])->messageId());
+        self::assertNull(MessageResult::sent([
+            'messages' => [['id' => 42]],
+        ])->messageId());
+        self::assertNull(MessageResult::sent([
+            'attributes' => ['message_id' => '42'],
+        ])->messageId());
+    }
 }

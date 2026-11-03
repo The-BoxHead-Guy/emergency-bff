@@ -231,32 +231,77 @@ final class EmergencyService
         foreach ($responders as $index => $responder) {
             $contact = $contacts[$index] ?? [];
 
-            if ($contact === [] || $responder->phone === '') {
-                $responder->failed = true;
-                $failures[] = [
-                    'phone' => $responder->phone,
-                    'message' => 'The emergency contact has no usable phone number.',
-                ];
+            if (!$this->hasUsableContact($contact, $responder)) {
+                $failures[] = $this->recordFailure(
+                    $responder,
+                    'El contacto de emergencia no tiene un número de teléfono utilizable.',
+                );
+
                 continue;
             }
 
             $result = $this->whatsApp->send($payloadFactory($contact, $profile->personalInfo));
 
-            if ($result->success) {
-                $responder->sent = true;
-                $responder->messageId = $result->messageId();
+            if (!$result->success) {
+                $failures[] = $this->recordFailure(
+                    $responder,
+                    $result->error['message'] ?? 'No se pudo enviar el mensaje de WhatsApp.',
+                    $result->status,
+                );
+
                 continue;
             }
 
-            $responder->failed = true;
-            $failures[] = [
-                'phone' => $responder->phone,
-                'status' => $result->status,
-                'message' => $result->error['message'] ?? 'The WhatsApp message could not be sent.',
-            ];
+            $messageId = $result->messageId();
+
+            if ($messageId === null) {
+                $this->logger?->warning('emergency.wamid_missing', [
+                    'phone' => $responder->phone,
+                    'status' => $result->status,
+                ]);
+
+                $failures[] = $this->recordFailure(
+                    $responder,
+                    'La respuesta de envío de WhatsApp no incluyó un WAMID.',
+                    $result->status,
+                );
+
+                continue;
+            }
+
+            $responder->sent = true;
+            $responder->messageId = $messageId;
         }
 
         return [$responders, $failures];
+    }
+
+    /**
+     * @param array<string, mixed> $contact
+     */
+    private function hasUsableContact(array $contact, Responder $responder): bool
+    {
+        return $contact !== [] && $responder->phone !== '';
+    }
+
+    /**
+     * Marks the responder as failed and returns its failure entry.
+     *
+     * @return array<string, mixed>
+     */
+    private function recordFailure(Responder $responder, string $message, ?int $status = null): array
+    {
+        $responder->failed = true;
+
+        $failure = ['phone' => $responder->phone];
+
+        if ($status !== null) {
+            $failure['status'] = $status;
+        }
+
+        $failure['message'] = $message;
+
+        return $failure;
     }
 
     /**

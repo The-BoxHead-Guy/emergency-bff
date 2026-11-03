@@ -215,6 +215,11 @@ Behavior:
 
 Partial failures create the emergency and appear in `failures`.
 
+A `2xx` send response without a valid `wamid.`-prefixed id counts as a failure
+for that responder (`sent: false`, `failed: true`, `message_id: null`), so the
+total and partial failure rules above apply unchanged. The failure entry keeps
+the real HTTP status in `failures[].status`.
+
 Errors:
 
 | Status | Code                         | Cause                         |

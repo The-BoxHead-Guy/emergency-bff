@@ -122,8 +122,15 @@ different identifiers:
 - `meta.status` is hard-coded to `200`; the HTTP status is authoritative.
 
 `MessageResult` reads the WAMID from the real path and never falls back to the
-internal or synthetic ids. A numeric `message_id` is not a WAMID and resolves to
-`null`.
+internal or synthetic ids. A valid WAMID is a non-empty string starting with
+`wamid.` and longer than the prefix; a numeric `message_id`, a bare `wamid.` or
+any non-prefixed string resolves to `null`.
+
+A 2xx send response without a valid WAMID is treated as a failed send: the BFF
+marks that responder `sent: false, failed: true, message_id: null` and records a
+failure with the real HTTP status. It never forwards `sent: true` with a null
+reply reference to `POST /v2/emergency`, so webhooks always have a WAMID to match
+on.
 
 The emergency response uses the internal integer instead:
 

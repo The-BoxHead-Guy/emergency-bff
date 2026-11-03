@@ -124,6 +124,42 @@ final class KernelTest extends TestCase
         self::assertCount(0, $this->client->callsTo('POST', '/v2/emergency'));
     }
 
+    public function test_activation_without_a_wamid_returns_502_and_creates_nothing(): void
+    {
+        $send = $this->fixture('responses/send-success.json');
+        $send['data']['attributes']['details']['messages'][0]['id'] = 42;
+
+        $client = new FakeApiClient(function (string $method, string $path) use ($send): ApiResponse {
+            if ($method === 'GET' && str_ends_with($path, '/exists')) {
+                return new ApiResponse(200, ['data' => ['attributes' => ['exists' => true]]]);
+            }
+
+            if ($method === 'GET' && str_contains($path, 'models/data')) {
+                return new ApiResponse(200, $this->fixture('responses/success.json'));
+            }
+
+            if ($method === 'GET' && str_contains($path, '/active')) {
+                throw ApiException::fromResponse(new ApiResponse(404));
+            }
+
+            if ($method === 'POST' && str_contains($path, 'whatsapp/templates/send')) {
+                return new ApiResponse(200, $send);
+            }
+
+            throw new \RuntimeException('Unexpected request: '.$method.' '.$path);
+        });
+
+        $kernel = $this->kernel($client);
+        $token = $this->csrfToken($kernel);
+        $session = $kernel->handle($this->json('POST', '/de-bff/emergency/session', ['code' => 'DABC12'], $token));
+
+        $response = $kernel->handle($this->json('POST', '/de-bff/emergency/activate', [], $session->body()['csrf_token']));
+
+        self::assertSame(502, $response->status());
+        self::assertSame('whatsapp_delivery_failed', $response->body()['error']['code']);
+        self::assertCount(0, $this->client->callsTo('POST', '/v2/emergency'));
+    }
+
     public function test_it_rejects_mutating_requests_without_a_csrf_token(): void
     {
         $kernel = $this->kernel();

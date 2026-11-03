@@ -6,6 +6,14 @@ and [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-11-04]
+
+### Fixed
+
+- A responder is no longer marked as sent when the WhatsApp send response lacks
+  a valid `wamid.`-prefixed id; it is reported as failed with the real HTTP
+  status instead of seeding a null reply reference.
+
 ## [0.1.3] - 2016-11-03
 
 ### Changed
