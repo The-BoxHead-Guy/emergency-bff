@@ -64,11 +64,12 @@ final class EmergencyServiceTest extends TestCase
         ?array $active = null,
         array $profile = [],
         array $emergency = self::EMERGENCY,
+        ?ApiException $createFailure = null,
     ): FakeApiClient {
         $profileBody = $profile === [] ? $this->fixture('responses/success.json') : $profile;
         $emergencyId = $emergency['data']['attributes']['emergency_id'] ?? $emergency['data']['id'] ?? 'EMG1';
 
-        return new FakeApiClient(function (string $method, string $path, ?array $body) use ($whatsApp, $active, $profileBody, $emergency, $emergencyId): ApiResponse {
+        return new FakeApiClient(function (string $method, string $path, ?array $body) use ($whatsApp, $active, $profileBody, $emergency, $emergencyId, $createFailure): ApiResponse {
             if ($method === 'GET' && str_contains($path, 'models/data')) {
                 return new ApiResponse(200, $profileBody);
             }
@@ -79,6 +80,12 @@ final class EmergencyServiceTest extends TestCase
                     : new ApiResponse(200, ['data' => ['attributes' => $active]]);
             }
 
+            if ($method === 'POST' && str_contains($path, 'whatsapp/templates/emergency/')) {
+                return $whatsApp === null
+                    ? new ApiResponse(200, $this->fixture('responses/typed-send.json'))
+                    : $whatsApp($body);
+            }
+
             if ($method === 'POST' && str_contains($path, 'whatsapp/templates/send')) {
                 return $whatsApp === null
                     ? new ApiResponse(200, $this->fixture('responses/send-success.json'))
@@ -86,7 +93,23 @@ final class EmergencyServiceTest extends TestCase
             }
 
             if ($method === 'POST' && $path === '/v2/emergency') {
+                if ($createFailure !== null) {
+                    throw $createFailure;
+                }
+
                 return new ApiResponse(201, $emergency);
+            }
+
+            if ($method === 'PUT' && $path === '/v2/emergency/'.$emergencyId) {
+                return new ApiResponse(200, [
+                    'data' => [
+                        'attributes' => [
+                            'emergency_id' => $emergencyId,
+                            'is_active' => $body['is_active'] ?? true,
+                            'responders' => $body['responders'] ?? [],
+                        ],
+                    ],
+                ]);
             }
 
             if ($method === 'GET' && $path === '/v2/emergency/'.$emergencyId) {
@@ -105,10 +128,7 @@ final class EmergencyServiceTest extends TestCase
     {
         [$service, $client] = $this->service();
 
-        $result = $service->activate(
-            Identity::fromCode('DABC12'),
-            ['coords' => ['latitude' => '4.7110', 'longitude' => '-74.0721']],
-        );
+        $result = $service->activate(Identity::fromCode('DABC12'));
 
         self::assertSame('EMG1', $result->emergencyId);
         self::assertTrue($result->responders[0]->sent);
@@ -118,38 +138,44 @@ final class EmergencyServiceTest extends TestCase
         $methods = array_map(static fn (array $call): string => $call['method'].' '.$call['path'], $client->calls);
         self::assertSame('GET /v2/emergency/qr/DABC12/active', $methods[0]);
         self::assertSame('GET /v2/fmd/DABC12/models/data?model=personal,emergencia', $methods[1]);
-        self::assertSame('POST /v2/whatsapp/templates/send', $methods[2]);
-        self::assertSame('POST /v2/emergency', $methods[3]);
+        self::assertSame('POST /v2/emergency', $methods[2]);
+        self::assertSame('POST /v2/whatsapp/templates/emergency/activation', $methods[3]);
+        self::assertSame('PUT /v2/emergency/EMG1', $methods[4]);
 
         $created = $client->callsTo('POST', '/v2/emergency')[0]['body'];
         self::assertSame('DABC12', $created['initiator_id']);
         self::assertTrue($created['is_active']);
-        self::assertSame('wamid.1', $created['responders'][0]['message_id']);
+        self::assertNull($created['responders'][0]['message_id']);
+
+        $activation = $client->callsTo('POST', 'emergency/activation')[0]['body'];
+        self::assertSame('EMG1', $activation['recipients'][0]['variables']['emergency_code']);
+
+        $updated = $client->callsTo('PUT', '/v2/emergency/EMG1')[0]['body'];
+        self::assertTrue($updated['is_active']);
+        self::assertSame('wamid.1', $updated['responders'][0]['message_id']);
     }
 
-    public function test_it_sends_the_details_wamid_to_the_create_endpoint(): void
+    public function test_it_sends_the_typed_wamid_to_the_update_endpoint(): void
     {
-        $envelope = $this->fixture('responses/send-success.json');
-        $envelope['data']['id'] = 'success|999';
-        $envelope['data']['attributes']['id'] = 999;
-        $envelope['data']['attributes']['details']['messages'][0]['id'] = 'wamid.real';
+        $envelope = $this->fixture('responses/typed-send.json');
+        $envelope['data']['attributes']['data']['results'][0]['whatsapp_message_id'] = 'wamid.real';
 
         [$service, $client] = $this->service($this->client(
             whatsApp: static fn (): ApiResponse => new ApiResponse(200, $envelope),
         ));
 
-        $service->activate(Identity::fromCode('DABC12'), []);
+        $service->activate(Identity::fromCode('DABC12'));
 
-        $created = $client->callsTo('POST', '/v2/emergency')[0]['body'];
+        $updated = $client->callsTo('PUT', '/v2/emergency/EMG1')[0]['body'];
 
-        self::assertSame('wamid.real', $created['responders'][0]['message_id']);
+        self::assertSame('wamid.real', $updated['responders'][0]['message_id']);
     }
 
     public function test_it_returns_a_numeric_upstream_id_as_a_string(): void
     {
         [$service] = $this->service($this->client(emergency: self::EMERGENCY_NUMERIC));
 
-        $result = $service->activate(Identity::fromCode('DABC12'), []);
+        $result = $service->activate(Identity::fromCode('DABC12'));
 
         self::assertSame('130', $result->emergencyId);
         self::assertSame('130', $result->toArray()['emergency_id']);
@@ -163,14 +189,14 @@ final class EmergencyServiceTest extends TestCase
                 $calls++;
 
                 return $calls === 1
-                    ? new ApiResponse(200, $this->fixture('responses/send-success.json'))
+                    ? new ApiResponse(200, $this->fixture('responses/typed-send.json'))
                     : throw ApiException::fromResponse(new ApiResponse(422, ['message' => 'Invalid number']));
             },
             profile: $this->twoContactProfile(),
         );
 
         [$service] = $this->service($client);
-        $result = $service->activate(Identity::fromCode('DABC12'), []);
+        $result = $service->activate(Identity::fromCode('DABC12'));
 
         self::assertTrue($result->isPartialFailure());
         self::assertCount(1, $result->failures);
@@ -191,9 +217,11 @@ final class EmergencyServiceTest extends TestCase
         $this->expectException(WhatsAppFailureException::class);
 
         try {
-            $service->activate(Identity::fromCode('DABC12'), []);
+            $service->activate(Identity::fromCode('DABC12'));
         } finally {
-            self::assertCount(0, $client->callsTo('POST', '/v2/emergency'));
+            self::assertCount(1, $client->callsTo('POST', '/v2/emergency'));
+            self::assertCount(1, $client->callsTo('DELETE', '/v2/emergency/EMG1'));
+            self::assertCount(0, $client->callsTo('PUT', '/v2/emergency/'));
         }
     }
 
@@ -208,9 +236,11 @@ final class EmergencyServiceTest extends TestCase
         $this->expectException(WhatsAppFailureException::class);
 
         try {
-            $service->activate(Identity::fromCode('DABC12'), []);
+            $service->activate(Identity::fromCode('DABC12'));
         } finally {
-            self::assertCount(0, $client->callsTo('POST', '/v2/emergency'));
+            self::assertCount(1, $client->callsTo('POST', '/v2/emergency'));
+            self::assertCount(1, $client->callsTo('DELETE', '/v2/emergency/EMG1'));
+            self::assertCount(0, $client->callsTo('PUT', '/v2/emergency/'));
         }
     }
 
@@ -222,14 +252,14 @@ final class EmergencyServiceTest extends TestCase
                 $calls++;
 
                 return $calls === 1
-                    ? new ApiResponse(200, $this->fixture('responses/send-success.json'))
+                    ? new ApiResponse(200, $this->fixture('responses/typed-send.json'))
                     : new ApiResponse(200, $this->sendResponseWithoutWamid());
             },
             profile: $this->twoContactProfile(),
         );
 
         [$service] = $this->service($client);
-        $result = $service->activate(Identity::fromCode('DABC12'), []);
+        $result = $service->activate(Identity::fromCode('DABC12'));
 
         self::assertTrue($result->responders[0]->sent);
         self::assertFalse($result->responders[1]->sent);
@@ -241,10 +271,21 @@ final class EmergencyServiceTest extends TestCase
         self::assertSame(200, $result->failures[0]['status']);
         self::assertArrayHasKey('message', $result->failures[0]);
 
-        $created = $client->callsTo('POST', '/v2/emergency')[0]['body'];
-        self::assertFalse($created['responders'][1]['sent']);
-        self::assertTrue($created['responders'][1]['failed']);
-        self::assertNull($created['responders'][1]['message_id']);
+        $updated = $client->callsTo('PUT', '/v2/emergency/EMG1')[0]['body'];
+        self::assertFalse($updated['responders'][1]['sent']);
+        self::assertTrue($updated['responders'][1]['failed']);
+        self::assertNull($updated['responders'][1]['message_id']);
+    }
+
+    public function test_it_maps_a_race_conflict_on_creation_to_already_active(): void
+    {
+        [$service] = $this->service($this->client(
+            createFailure: ApiException::fromResponse(new ApiResponse(409, ['message' => 'Conflict'])),
+        ));
+
+        $this->expectException(AlreadyActiveEmergencyException::class);
+
+        $service->activate(Identity::fromCode('DABC12'));
     }
 
     public function test_it_refuses_to_activate_when_an_emergency_is_already_active(): void
@@ -254,13 +295,13 @@ final class EmergencyServiceTest extends TestCase
         $this->expectException(AlreadyActiveEmergencyException::class);
 
         try {
-            $service->activate(Identity::fromCode('DABC12'), []);
+            $service->activate(Identity::fromCode('DABC12'));
         } finally {
             self::assertCount(0, $client->callsTo('GET', 'models/data'));
         }
     }
 
-    public function test_the_simulacrum_never_creates_an_emergency(): void
+    public function test_the_simulacrum_pre_creates_an_inactive_emergency(): void
     {
         [$service, $client] = $this->service();
 
@@ -268,9 +309,35 @@ final class EmergencyServiceTest extends TestCase
 
         self::assertTrue($result->simulated);
         self::assertNull($result->emergencyId);
-        self::assertCount(0, $client->callsTo('POST', '/v2/emergency'));
-        $payload = $client->callsTo('POST', 'whatsapp/templates/send')[0]['body'];
-        self::assertSame('simulacrum_support_contacts_confirmation_v2', $payload['template']);
+
+        $created = $client->callsTo('POST', '/v2/emergency');
+        self::assertCount(1, $created);
+        self::assertFalse($created[0]['body']['is_active']);
+
+        $payload = $client->callsTo('POST', 'emergency/simulacrum')[0]['body'];
+        self::assertSame('EMG1', $payload['recipients'][0]['variables']['emergency_code']);
+        self::assertSame('Grace Hopper', $payload['recipients'][0]['variables']['contact_name']);
+        self::assertCount(0, $client->callsTo('PUT', '/v2/emergency/'));
+    }
+
+    public function test_the_simulacrum_deletes_the_created_emergency_when_every_send_fails(): void
+    {
+        $client = $this->client(
+            whatsApp: static function (): never {
+                throw ApiException::fromResponse(new ApiResponse(500));
+            },
+        );
+
+        [$service] = $this->service($client);
+
+        $this->expectException(WhatsAppFailureException::class);
+
+        try {
+            $service->simulacrum(Identity::fromCode('DABC12'));
+        } finally {
+            self::assertCount(1, $client->callsTo('POST', '/v2/emergency'));
+            self::assertCount(1, $client->callsTo('DELETE', '/v2/emergency/EMG1'));
+        }
     }
 
     public function test_it_aborts_only_the_callers_emergency(): void
@@ -310,9 +377,9 @@ final class EmergencyServiceTest extends TestCase
     {
         [$service, $client] = $this->service();
 
-        $first = $service->activate(Identity::fromCode('DABC12'), [], 'key-1');
+        $first = $service->activate(Identity::fromCode('DABC12'), 'key-1');
         $calls = count($client->calls);
-        $second = $service->activate(Identity::fromCode('DABC12'), [], 'key-1');
+        $second = $service->activate(Identity::fromCode('DABC12'), 'key-1');
 
         self::assertSame($first->emergencyId, $second->emergencyId);
         self::assertCount($calls, $client->calls);
@@ -327,7 +394,7 @@ final class EmergencyServiceTest extends TestCase
 
         $this->expectException(\DataEmergencia\EmergencyBff\Emergency\Exception\MissingContactsException::class);
 
-        $service->activate(Identity::fromCode('DABC12'), []);
+        $service->activate(Identity::fromCode('DABC12'));
     }
 
     /**
@@ -351,8 +418,9 @@ final class EmergencyServiceTest extends TestCase
      */
     private function sendResponseWithoutWamid(): array
     {
-        $body = $this->fixture('responses/send-success.json');
-        $body['data']['attributes']['details']['messages'][0]['id'] = 42;
+        $body = $this->fixture('responses/typed-send.json');
+        $body['data']['attributes']['data']['results'][0]['status'] = 'sent';
+        $body['data']['attributes']['data']['results'][0]['whatsapp_message_id'] = 42;
 
         return $body;
     }

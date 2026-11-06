@@ -164,8 +164,8 @@ Idempotency-Key: 6f1c…
 }
 ```
 
-`geolocation` is optional, but sending it is recommended. Missing coordinates
-mean the responders receive the emergency without a map link.
+`geolocation` is optional and validated when present. The typed activation
+template does not consume it; the API owns the Meta payload.
 
 ```http
 201 Created
@@ -199,11 +199,14 @@ Behavior:
 
 1. If an emergency is already active for the code, return `409`.
 2. Fetch the medical profile; require personal information and contacts.
-3. Build and send one WhatsApp message per contact.
-4. If every send fails, return `502` and do not create the emergency.
-5. Create the upstream emergency and return the result.
+3. Create the upstream emergency active so the typed template has an
+   `emergency_code`.
+4. Send one typed activation message per contact with that emergency id.
+5. If every send fails, delete the created emergency and return `502`.
+6. Otherwise write the responder WAMIDs and statuses back through
+   `PUT /v2/emergency/{id}` and return the result.
 
-Partial failures create the emergency and appear in `failures`.
+Partial failures keep the emergency and appear in `failures`.
 
 A `2xx` send response without a valid `wamid.`-prefixed id counts as a failure
 for that responder (`sent: false`, `failed: true`, `message_id: null`), so the
@@ -232,7 +235,7 @@ POST /simulacrum
 X-CSRF-Token: …
 ```
 
-No body required. Sends the simulation template to every contact.
+No body required. Sends the typed simulation template to every contact.
 
 ```json
 {
@@ -245,8 +248,10 @@ No body required. Sends the simulation template to every contact.
 }
 ```
 
-Simulation never creates an emergency and never checks for an existing one.
-A total delivery failure returns `502 whatsapp_delivery_failed`.
+Simulation never checks for an existing active emergency. It pre-creates an
+inactive emergency only to obtain a valid `emergency_code`, leaves it inactive
+and does not update it. A total delivery failure deletes that record and returns
+`502 whatsapp_delivery_failed`.
 
 ## Refresh
 
@@ -437,12 +442,14 @@ sequenceDiagram
   B->>F: POST /activate {geolocation}
   F->>U: GET /v2/fmd/{code}/models/data
   U-->>F: profile, contacts
-  loop each contact
-    F->>W: POST /v2/whatsapp/templates/send
-    W-->>F: message id
-  end
-  F->>U: POST /v2/emergency
+  F->>U: POST /v2/emergency (active)
   U-->>F: emergency id
+  loop each contact
+    F->>W: POST /v2/whatsapp/templates/emergency/activation
+    W-->>F: status, whatsapp_message_id
+  end
+  F->>U: PUT /v2/emergency/{id}
+  U-->>F: updated snapshot
   F-->>B: 201 result
 ```
 
@@ -453,10 +460,13 @@ sequenceDiagram
 | Validate code    | `GET /v2/fmd/{code}/exists`                                |
 | Read profile     | `GET /v2/fmd/{code}/models/data?model=personal,emergencia` |
 | Create emergency | `POST /v2/emergency`                                       |
+| Update emergency | `PUT /v2/emergency/{id}`                                   |
 | Read emergency   | `GET /v2/emergency/{id}`                                   |
 | Find active      | `GET /v2/emergency/qr/{code}/active`                       |
 | Delete emergency | `DELETE /v2/emergency/{id}`                                |
-| Send WhatsApp    | `POST /v2/whatsapp/templates/send`                         |
+| Send activation  | `POST /v2/whatsapp/templates/emergency/activation`         |
+| Send simulacrum  | `POST /v2/whatsapp/templates/emergency/simulacrum`         |
+| Send abort       | `POST /v2/whatsapp/templates/send`                         |
 
 See [Upstream API](bff/upstream-api.md) for payloads and normalization.
 

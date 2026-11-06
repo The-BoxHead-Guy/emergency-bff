@@ -8,16 +8,16 @@ All routes are relative to `EMERGENCY_BFF_ROUTE_PREFIX`, default
 
 ## Route table
 
-| Method   | Path            | Auth           | Success | Purpose                                                   |
-| -------- | --------------- | -------------- | ------- | --------------------------------------------------------- |
-| `GET`    | `/health`       | None           | `200`   | Liveness probe.                                           |
-| `GET`    | `/config`       | None           | `200`   | Route prefix and CSRF token.                              |
-| `POST`   | `/session`      | CSRF           | `201`   | Validate the code and start the session.                  |
-| `GET`    | `/current`      | Session        | `200`   | Resume an active emergency for the session code.          |
-| `POST`   | `/activate`     | Session + CSRF | `201`   | Send WhatsApp alerts and create the emergency.            |
-| `POST`   | `/simulacrum`   | Session + CSRF | `200`   | Send the simulation template. Never creates an emergency. |
-| `POST`   | `/{id}/refresh` | Session + CSRF | `200`   | Read the current upstream emergency state.                |
-| `DELETE` | `/{id}`         | Session + CSRF | `200`   | Send the abort template and close the emergency.          |
+| Method   | Path            | Auth           | Success | Purpose                                                            |
+| -------- | --------------- | -------------- | ------- | ------------------------------------------------------------------ |
+| `GET`    | `/health`       | None           | `200`   | Liveness probe.                                                    |
+| `GET`    | `/config`       | None           | `200`   | Route prefix and CSRF token.                                       |
+| `POST`   | `/session`      | CSRF           | `201`   | Validate the code and start the session.                           |
+| `GET`    | `/current`      | Session        | `200`   | Resume an active emergency for the session code.                   |
+| `POST`   | `/activate`     | Session + CSRF | `201`   | Send WhatsApp alerts and create the emergency.                     |
+| `POST`   | `/simulacrum`   | Session + CSRF | `200`   | Send the simulation template via a pre-created inactive emergency. |
+| `POST`   | `/{id}/refresh` | Session + CSRF | `200`   | Read the current upstream emergency state.                         |
+| `DELETE` | `/{id}`         | Session + CSRF | `200`   | Send the abort template and close the emergency.                   |
 
 Unknown paths return `404 not_found`. Known paths with the wrong method return
 `405 method_not_allowed` and an `allowed` array in `details`.
@@ -150,14 +150,18 @@ Response `201`:
 ```
 
 `partial_failure` is `true` when at least one responder failed and at least one
-succeeded. If every responder fails, the BFF returns
-`502 whatsapp_delivery_failed` and does not create the upstream emergency.
+succeeded. The BFF creates the emergency active first, because the typed
+activation template needs the emergency id as `emergency_code`, then writes the
+responder WAMIDs back. If every responder fails, it deletes the created
+emergency and returns `502 whatsapp_delivery_failed`.
 
 ## `POST /simulacrum`
 
-Sends the simulation template to the emergency contacts. The response has the
-same shape as activation with `simulated: true` and `emergency_id: null`. It
-never creates an upstream emergency.
+Sends the simulation template to the emergency contacts. The BFF pre-creates an
+inactive emergency only to obtain a valid `emergency_code`; the record stays
+inactive and is not updated. When every send fails, the BFF deletes the record
+it created. The response has the same shape as activation with
+`simulated: true` and `emergency_id: null`.
 
 The BFF does not prevent a simulation while a real emergency is active;
 frontends should block that case in the UI.

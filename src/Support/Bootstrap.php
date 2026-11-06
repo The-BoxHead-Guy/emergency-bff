@@ -43,11 +43,7 @@ final class Bootstrap
             $config->sessionTtl,
         );
 
-        $payloads = new WhatsAppPayloadBuilder(
-            qrBaseHost: $config->qrBaseHost,
-            fallbackOriginUrl: $config->fallbackOriginUrl,
-            local: $config->local,
-        );
+        $payloads = new WhatsAppPayloadBuilder();
 
         $service = new EmergencyService(
             profiles: new ProfileRepository($http),

@@ -13,10 +13,13 @@ domain model.
 | Validate an identity code | `GET`           | `/v2/fmd/{code}/exists`                                |
 | Fetch the medical profile | `GET`           | `/v2/fmd/{code}/models/data?model=personal,emergencia` |
 | Create an emergency       | `POST`          | `/v2/emergency`                                        |
+| Update an emergency       | `PUT`           | `/v2/emergency/{id}`                                   |
 | Read an emergency         | `GET`           | `/v2/emergency/{id}`                                   |
 | Delete an emergency       | `DELETE`        | `/v2/emergency/{id}`                                   |
 | Find the active emergency | `GET`           | `/v2/emergency/qr/{code}/active`                       |
-| Send a WhatsApp template  | `POST`          | `/v2/whatsapp/templates/send`                          |
+| Send activation template  | `POST`          | `/v2/whatsapp/templates/emergency/activation`          |
+| Send simulacrum template  | `POST`          | `/v2/whatsapp/templates/emergency/simulacrum`          |
+| Send abort template       | `POST`          | `/v2/whatsapp/templates/send`                          |
 
 The canonical endpoint list lives in `src/Http/Endpoints.php`.
 
@@ -86,53 +89,96 @@ is the upstream internal `whatsapp_messages.id`, an integer. Every proxied
 response exposes it as a decimal string (`42` → `"42"`, `null` → `null`) so the
 browser contract stays `message_id: string | null`.
 
-## WhatsApp send response
+## Typed WhatsApp request
 
-`POST /v2/whatsapp/templates/send` returns a JSON:API resource with two
-different identifiers:
+Activation and simulacrum send only the recipient phone and the variables the
+API expects:
 
 ```json
 {
-  "meta": { "status": 200 },
+  "recipients": [
+    {
+      "phone": "573001234567",
+      "variables": {
+        "user_name": "Ada Lovelace",
+        "emergency_code": "EMG123456"
+      }
+    }
+  ]
+}
+```
+
+Simulacrum adds `contact_name`. The API builds the Meta payload, including the
+template name, language, image, date and QR link.
+
+## Typed WhatsApp response
+
+Both typed endpoints return a JSON:API resource whose nested `results[0]` carries
+the recipient outcome:
+
+```json
+{
   "data": {
-    "type": "response",
-    "id": "success|42",
+    "type": "whatsapp_template",
+    "id": "resource|…",
     "attributes": {
-      "success": true,
-      "id": 42,
-      "details": {
-        "messages": [
+      "data": {
+        "event_type": "activation",
+        "results": [
           {
-            "id": "wamid.HBgMNTg0MTIxMjM0NTY3FQIAERgS...",
-            "message_status": "accepted"
+            "phone": "573001234567",
+            "status": "sent",
+            "whatsapp_message_id": "wamid.HBgMNTg0MTIxMjM0NTY3FQIAERgS…"
           }
-        ]
+        ],
+        "summary": { "total": 1, "sent": 1, "failed": 0 }
       }
     }
   }
 }
 ```
 
-- `data.attributes.details.messages[0].id` is the **WAMID** (Meta's message id).
-  It is the only value the BFF sends to `POST /v2/emergency` as
-  `responders[].message_id`.
-- `data.attributes.id` is the internal `whatsapp_messages.id` (integer).
-- `data.id` is a synthetic envelope id (for example `"success|42"`); it changes
-  per response and is never a WAMID.
-- `meta.status` is hard-coded to `200`; the HTTP status is authoritative.
+- `data.attributes.data.results[0].status` is `sent` or `failed`.
+- `data.attributes.data.results[0].whatsapp_message_id` is the **WAMID** when
+  the send succeeded; it is `null` for a failed recipient.
+- The endpoint answers `200` even when the recipient fails, so the HTTP status is
+  not enough to decide success.
 
-`MessageResult` reads the WAMID from the real path and never falls back to the
-internal or synthetic ids. A valid WAMID is a non-empty string starting with
-`wamid.` and longer than the prefix; a numeric `message_id`, a bare `wamid.` or
-any non-prefixed string resolves to `null`.
+`MessageResult` reads the WAMID only from `whatsapp_message_id` in the typed
+result. A valid WAMID is a non-empty string starting with `wamid.` and longer
+than the prefix; a numeric value, a bare `wamid.` or any non-prefixed string
+resolves to `null`.
 
-A 2xx send response without a valid WAMID is treated as a failed send: the BFF
-marks that responder `sent: false, failed: true, message_id: null` and records a
-failure with the real HTTP status. It never forwards `sent: true` with a null
-reply reference to `POST /v2/emergency`, so webhooks always have a WAMID to match
-on.
+A `200` with `status: failed` or without a valid WAMID is treated as a failed
+send: the BFF marks that responder `sent: false, failed: true,
+message_id: null` and records a failure with the real HTTP status.
 
-The emergency response uses the internal integer instead:
+## Emergency update
+
+After activation, the BFF writes the outcomes back through
+`PUT /v2/emergency/{id}`:
+
+```json
+{
+  "is_active": true,
+  "initiator_id": "DABC12",
+  "responders": [
+    {
+      "phone": "573001234567",
+      "name": "Grace Hopper",
+      "sent": true,
+      "delivered": false,
+      "read": false,
+      "failed": false,
+      "message_id": "wamid.…"
+    }
+  ]
+}
+```
+
+The API resolves the WAMID to its internal `whatsapp_messages.id` and stores it
+on the matching `emergency_responders` row. The update response is the same
+emergency resource returned by create/show:
 
 ```json
 {
@@ -152,16 +198,17 @@ The emergency response uses the internal integer instead:
 }
 ```
 
-That `message_id` is a display/correlation reference normalized to `"42"`; it
-must never be fed back into the create request, which expects the WAMID.
+That response `message_id` is the internal id normalized to `"42"`; it is a
+display/correlation value and must never be fed back into the update request,
+which expects the WAMID.
 
 ## HTTP behavior
 
 - Timeout applies to connect and total request time.
 - `GET` and `HEAD` are retried `EMERGENCY_BFF_RETRY_COUNT` times on transport
   errors and `5xx` responses, with a short linear backoff.
-- `POST` and `DELETE` are never retried automatically. Callers can make them
-  idempotent with `Idempotency-Key`.
+- `POST`, `PUT` and `DELETE` are never retried automatically. Callers can make
+  them idempotent with `Idempotency-Key`.
 - Upstream error bodies are translated into `ApiException`, then into
   `502 upstream_error` with `details.status` and `details.upstream_code`.
 - The upstream raw body is preserved on `ApiResponse` for debugging, but it is
@@ -172,7 +219,7 @@ must never be fed back into the create request, which expects the WAMID.
 - Same-origin enforcement, CSRF and rate limiting.
 - Session-scoped identity instead of a code in every browser request.
 - Per-customer credentials held server-side.
-- WhatsApp payload construction and delivery fan-out.
+- WhatsApp variable construction and per-contact delivery fan-out.
 - Delivery summaries (`partial_failure`, `total_failure`) and idempotency.
 - A stable error envelope for API consumers.
 

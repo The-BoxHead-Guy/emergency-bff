@@ -6,6 +6,34 @@ and [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-06
+
+### Changed
+
+- Activation and simulacrum now call the typed endpoints
+  `POST /v2/whatsapp/templates/emergency/activation` and
+  `POST /v2/whatsapp/templates/emergency/simulacrum` with recipient phones and
+  endpoint variables only. The API builds the Meta payload.
+- Activation creates the emergency active before sending, then writes responder
+  WAMIDs and statuses back through `PUT /v2/emergency/{id}`.
+- Simulacrum pre-creates an inactive emergency to obtain a valid
+  `emergency_code` and leaves it inactive.
+- The abort flow keeps the legacy `POST /v2/whatsapp/templates/send` payload.
+
+### Added
+
+- `EmergencyRepository::update()` and `Endpoints::updateState()` for
+  `PUT /v2/emergency/{id}`.
+- Typed response parsing for `data.attributes.data.results[0].status` and
+  `whatsapp_message_id`, including the `200` plus `status: failed` case.
+
+### Fixed
+
+- A total activation or simulacrum send failure now deletes the emergency the
+  BFF created instead of leaving an orphan record.
+- An upstream `409` during creation maps to `emergency_already_active` so a race
+  returns the domain error instead of a generic upstream failure.
+
 ## [0.2.0] - 2026-11-03
 
 ### Removed

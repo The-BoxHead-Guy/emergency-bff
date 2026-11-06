@@ -58,6 +58,7 @@ final class MessageResult
             ['attributes', 'details', 'messages', 0, 'id'],
             ['details', 'messages', 0, 'id'],
             ['messages', 0, 'id'],
+            ['whatsapp_message_id'],
             ['message_id'],
             ['attributes', 'message_id'],
         ];

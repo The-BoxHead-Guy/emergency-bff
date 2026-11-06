@@ -16,6 +16,13 @@ final class MessageResultTest extends TestCase
         self::assertSame('wamid.1', MessageResult::sent($body['data'])->messageId());
     }
 
+    public function test_it_reads_the_wamid_from_the_typed_recipient_result(): void
+    {
+        $result = $this->fixture('responses/typed-send.json')['data']['attributes']['data']['results'][0];
+
+        self::assertSame('wamid.1', MessageResult::sent($result)->messageId());
+    }
+
     public function test_it_reads_the_wamid_from_an_attributes_only_payload(): void
     {
         $body = $this->fixture('responses/send-success.json');

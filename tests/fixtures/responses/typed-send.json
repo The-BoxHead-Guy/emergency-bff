@@ -1,0 +1,29 @@
+{
+  "meta": {
+    "timestamp": "2026-11-06T14:25:28+00:00",
+    "api_version": "2.0.0",
+    "status": 200,
+    "copyright": "© 2026 api.dataemergencia.com. All rights reserved."
+  },
+  "data": {
+    "type": "whatsapp_template",
+    "id": "resource|abcdef",
+    "attributes": {
+      "data": {
+        "event_type": "activation",
+        "results": [
+          {
+            "phone": "573001234567",
+            "status": "sent",
+            "whatsapp_message_id": "wamid.1"
+          }
+        ],
+        "summary": {
+          "total": 1,
+          "sent": 1,
+          "failed": 0
+        }
+      }
+    }
+  }
+}

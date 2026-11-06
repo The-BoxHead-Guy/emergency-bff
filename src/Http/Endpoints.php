@@ -35,10 +35,20 @@ final class Endpoints
 
     public static function showState(string $emergencyId): string
     {
-        return sprintf('/v2/emergency/%s', rawurlencode($emergencyId));
+        return self::statePath($emergencyId);
+    }
+
+    public static function update(string $emergencyId): string
+    {
+        return self::statePath($emergencyId);
     }
 
     public static function deleteState(string $emergencyId): string
+    {
+        return self::statePath($emergencyId);
+    }
+
+    private static function statePath(string $emergencyId): string
     {
         return sprintf('/v2/emergency/%s', rawurlencode($emergencyId));
     }
@@ -51,5 +61,15 @@ final class Endpoints
     public static function whatsappTemplates(): string
     {
         return '/v2/whatsapp/templates/send';
+    }
+
+    public static function whatsappEmergencyActivation(): string
+    {
+        return '/v2/whatsapp/templates/emergency/activation';
+    }
+
+    public static function whatsappEmergencySimulacrum(): string
+    {
+        return '/v2/whatsapp/templates/emergency/simulacrum';
     }
 }

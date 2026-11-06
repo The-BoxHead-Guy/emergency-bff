@@ -26,12 +26,14 @@ sequenceDiagram
     API-->>BFF: 404 (no active emergency)
     BFF->>API: GET /v2/fmd/{code}/models/data
     API-->>BFF: profile + contacts
-    loop each emergency contact
-        BFF->>WA: POST /v2/whatsapp/templates/send
-        WA-->>BFF: message_id
-    end
-    BFF->>API: POST /v2/emergency
+    BFF->>API: POST /v2/emergency (active)
     API-->>BFF: emergency_id
+    loop each emergency contact
+        BFF->>WA: POST /v2/whatsapp/templates/emergency/activation
+        WA-->>BFF: status, whatsapp_message_id
+    end
+    BFF->>API: PUT /v2/emergency/{id} (responder WAMIDs)
+    API-->>BFF: updated snapshot
     BFF-->>Browser: 201 responders, partial_failure
 ```
 
@@ -45,11 +47,10 @@ token. No profile data is fetched yet.
 
 ### 2. Activation request
 
-`POST /activate` receives the current position. The BFF accepts either flat
-`latitude`/`longitude` fields or a nested `coords` object. Coordinates are
-optional at the HTTP layer but a real activation without a position produces a
-template with empty map values, so clients should always send them or use the
-fallback phone path.
+`POST /activate` accepts either flat `latitude`/`longitude` fields or a nested
+`coords` object. Coordinates remain optional and are validated when present; the
+typed activation template does not consume them, because the API owns the Meta
+payload.
 
 The optional `Idempotency-Key` header (or `idempotency_key` body field) scopes a
 cached result to `operation:code:key`. Repeating the same key returns the first
@@ -70,31 +71,32 @@ It then fetches the profile and requires:
 Missing data returns `422 missing_medical_profile` or
 `422 missing_emergency_contacts`.
 
-### 4. Message dispatch
+### 4. Emergency creation
 
-For each contact, the BFF builds the `emergency_message_template_v3` payload
-with the contact name, user name, Spanish activation date, QR URL and map
-coordinates. It sends each message independently and records `sent`,
-`delivered`, `read`, `failed` and `message_id` per responder.
+The BFF creates the upstream emergency active before sending, with the
+responders from the profile and `initiator_id: code`. The typed templates use the
+emergency id as their `emergency_code` URL suffix, so the record must exist
+first. An upstream `409` during creation becomes
+`409 emergency_already_active`, so a race still returns the domain error.
 
-The QR code in the emergency template is the first valid product code, or the
-identity code when no product code is available.
+### 5. Message dispatch
 
-A send counts as successful only when the API returns a valid `wamid.`-prefixed
-id. A `2xx` response without one is recorded as a failure for that responder
-(`sent: false`, `failed: true`, `message_id: null`), because a responder must
-never be reported as sent without the reference webhooks match on.
+For each contact, the BFF calls `POST /v2/whatsapp/templates/emergency/activation`
+with the recipient phone and the variables `user_name` and `emergency_code`
+(the created emergency id). The API builds the Meta payload, including the
+template name, image, Spanish date, QR URL and map coordinates.
 
-If every send fails, the BFF returns `502 whatsapp_delivery_failed` and does not
-create the upstream emergency. If some fail, the emergency is created and the
-response has `partial_failure: true` and a `failures` array whose entry keeps the
-real HTTP status.
+A send counts as successful only when the nested result has `status: sent` and a
+valid `wamid.`-prefixed `whatsapp_message_id`. A `200` with `status: failed` or a
+missing WAMID is recorded as a failure for that responder (`sent: false`,
+`failed: true`, `message_id: null`), because a responder must never be reported
+as sent without the reference webhooks match on.
 
-### 5. Emergency creation
-
-Only after a successful dispatch does the BFF create the upstream emergency with
-the responders array and `initiator_id: code`. The snapshot is stored in the
-session and returned to the caller.
+If every send fails, the BFF deletes the emergency it just created and returns
+`502 whatsapp_delivery_failed`. If at least one succeeds, the BFF writes the
+responder statuses and WAMIDs back through `PUT /v2/emergency/{id}` and returns
+the updated snapshot with `partial_failure` when applicable. The failure entry
+keeps the real HTTP status.
 
 ### 6. Abort
 
@@ -119,11 +121,14 @@ reconnect and at a throttled interval. Delivery statuses are read, not inferred.
 
 ## Simulation
 
-`POST /simulacrum` follows the same profile and contact checks, but sends
-`simulacrum_support_contacts_confirmation_v2` and never calls
-`POST /v2/emergency`. The response has `simulated: true` and
-`emergency_id: null`, so a simulation cannot be resumed or aborted as a real
-emergency.
+`POST /simulacrum` follows the same profile and contact checks. It first creates
+an inactive emergency to obtain a valid `emergency_code`, then calls
+`POST /v2/whatsapp/templates/emergency/simulacrum` with `contact_name`,
+`user_name` and `emergency_code`. The created record stays inactive and is never
+written back. When every send fails, the BFF deletes the record it created.
+
+The response has `simulated: true` and `emergency_id: null`, so a simulation
+cannot be resumed or aborted as a real emergency.
 
 ## Idempotency and retries
 

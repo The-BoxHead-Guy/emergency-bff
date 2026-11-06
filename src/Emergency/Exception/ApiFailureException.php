@@ -6,7 +6,7 @@ namespace DataEmergencia\EmergencyBff\Emergency\Exception;
 
 final class ApiFailureException extends EmergencyException
 {
-    public function __construct(string $operation, int $status = 0, ?\Throwable $previous = null)
+    public function __construct(string $operation, private readonly int $status = 0, ?\Throwable $previous = null)
     {
         parent::__construct(
             sprintf('The upstream API failed while %s.', $operation),
@@ -14,5 +14,10 @@ final class ApiFailureException extends EmergencyException
             ['operation' => $operation, 'status' => $status],
             $previous,
         );
+    }
+
+    public function status(): int
+    {
+        return $this->status;
     }
 }

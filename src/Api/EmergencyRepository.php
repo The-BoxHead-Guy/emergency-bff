@@ -39,6 +39,27 @@ final class EmergencyRepository
     }
 
     /**
+     * Writes the emergency status and responder delivery data back upstream.
+     *
+     * @param array<int, array<string, mixed>> $responders
+     * @return array<string, mixed>
+     */
+    public function update(string $emergencyId, string $code, array $responders, bool $isActive): array
+    {
+        try {
+            $response = $this->client->request('PUT', Endpoints::update($emergencyId), [
+                'is_active' => $isActive,
+                'initiator_id' => $code,
+                'responders' => $responders,
+            ]);
+        } catch (ApiException $exception) {
+            throw new ApiFailureException('updating the emergency', $exception->status(), $exception);
+        }
+
+        return $this->normalize($response->body());
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function show(string $emergencyId): array

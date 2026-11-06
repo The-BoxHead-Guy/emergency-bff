@@ -109,7 +109,7 @@ final class KernelTest extends TestCase
         self::assertFalse($current->body()['active']);
     }
 
-    public function test_the_simulacrum_route_does_not_create_an_emergency(): void
+    public function test_the_simulacrum_route_creates_an_inactive_emergency(): void
     {
         $kernel = $this->kernel();
         $token = $this->csrfToken($kernel);
@@ -119,13 +119,15 @@ final class KernelTest extends TestCase
 
         self::assertSame(200, $response->status());
         self::assertTrue($response->body()['simulated']);
-        self::assertCount(0, $this->client->callsTo('POST', '/v2/emergency'));
+        self::assertCount(1, $this->client->callsTo('POST', '/v2/emergency'));
+        self::assertFalse($this->client->callsTo('POST', '/v2/emergency')[0]['body']['is_active']);
+        self::assertCount(1, $this->client->callsTo('POST', 'emergency/simulacrum'));
     }
 
-    public function test_activation_without_a_wamid_returns_502_and_creates_nothing(): void
+    public function test_activation_without_a_wamid_returns_502_and_deletes_the_created_emergency(): void
     {
-        $send = $this->fixture('responses/send-success.json');
-        $send['data']['attributes']['details']['messages'][0]['id'] = 42;
+        $send = $this->fixture('responses/typed-send.json');
+        $send['data']['attributes']['data']['results'][0]['whatsapp_message_id'] = 42;
 
         $client = new FakeApiClient(function (string $method, string $path) use ($send): ApiResponse {
             if ($method === 'GET' && str_ends_with($path, '/exists')) {
@@ -140,8 +142,18 @@ final class KernelTest extends TestCase
                 throw ApiException::fromResponse(new ApiResponse(404));
             }
 
-            if ($method === 'POST' && str_contains($path, 'whatsapp/templates/send')) {
+            if ($method === 'POST' && $path === '/v2/emergency') {
+                return new ApiResponse(201, [
+                    'data' => ['attributes' => ['emergency_id' => 'EMG1', 'is_active' => true]],
+                ]);
+            }
+
+            if ($method === 'POST' && str_contains($path, 'whatsapp/templates/emergency/')) {
                 return new ApiResponse(200, $send);
+            }
+
+            if ($method === 'DELETE' && str_starts_with($path, '/v2/emergency/')) {
+                return new ApiResponse(204);
             }
 
             throw new \RuntimeException('Unexpected request: '.$method.' '.$path);
@@ -155,7 +167,8 @@ final class KernelTest extends TestCase
 
         self::assertSame(502, $response->status());
         self::assertSame('whatsapp_delivery_failed', $response->body()['error']['code']);
-        self::assertCount(0, $this->client->callsTo('POST', '/v2/emergency'));
+        self::assertCount(1, $this->client->callsTo('POST', '/v2/emergency'));
+        self::assertCount(1, $this->client->callsTo('DELETE', '/v2/emergency/EMG1'));
     }
 
     public function test_it_rejects_mutating_requests_without_a_csrf_token(): void
@@ -357,14 +370,18 @@ final class KernelTest extends TestCase
                     : new ApiResponse(200, ['data' => ['attributes' => $active]]);
             }
 
+            if ($method === 'POST' && str_contains($path, 'whatsapp/templates/emergency/')) {
+                return new ApiResponse(200, $this->fixture('responses/typed-send.json'));
+            }
+
             if ($method === 'POST' && str_contains($path, 'whatsapp/templates/send')) {
                 return new ApiResponse(200, $this->fixture('responses/send-success.json'));
             }
 
             if ($method === 'POST' && $path === '/v2/emergency') {
-                $active = [
+                $snapshot = [
                     'emergency_id' => $emergencyId,
-                    'is_active' => true,
+                    'is_active' => $body['is_active'] ?? true,
                     'responders' => [
                         [
                             'id' => 5011,
@@ -380,7 +397,33 @@ final class KernelTest extends TestCase
                     ],
                 ];
 
-                return new ApiResponse(201, ['data' => ['attributes' => $active]]);
+                if (($body['is_active'] ?? true) === true) {
+                    $active = $snapshot;
+                }
+
+                return new ApiResponse(201, ['data' => ['attributes' => $snapshot]]);
+            }
+
+            if ($method === 'PUT' && str_starts_with($path, '/v2/emergency/')) {
+                $active = [
+                    'emergency_id' => $emergencyId,
+                    'is_active' => $body['is_active'] ?? true,
+                    'responders' => [
+                        [
+                            'id' => 5011,
+                            'emergency_id' => $emergencyId,
+                            'message_id' => 42,
+                            'name' => 'Grace Hopper',
+                            'phone' => '573001234567',
+                            'sent' => true,
+                            'delivered' => false,
+                            'read' => false,
+                            'failed' => false,
+                        ],
+                    ],
+                ];
+
+                return new ApiResponse(200, ['data' => ['attributes' => $active]]);
             }
 
             if ($method === 'GET' && $path === '/v2/emergency/'.$emergencyId) {

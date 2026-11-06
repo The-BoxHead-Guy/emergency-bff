@@ -16,28 +16,18 @@ final class WhatsAppPayloadBuilderTest extends TestCase
         $this->builder = new WhatsAppPayloadBuilder();
     }
 
-    public function test_it_builds_the_emergency_payload_exactly(): void
+    public function test_it_builds_the_activation_variables_exactly(): void
     {
-        $payload = $this->builder->buildEmergencyPayload(
-            $this->contact(),
-            ['latitude' => '4.7110', 'longitude' => '-74.0721'],
-            ['full_name' => 'Ada Lovelace'],
-            'DABC12',
-            new \DateTimeImmutable('2026-10-28 12:35:00'),
-        );
+        $variables = $this->builder->buildActivationVariables('Ada Lovelace', 'EMG1');
 
-        self::assertSame($this->fixture('payloads/emergency.json'), $payload);
+        self::assertSame($this->fixture('payloads/emergency.json'), $variables);
     }
 
-    public function test_it_builds_the_simulacrum_payload_exactly(): void
+    public function test_it_builds_the_simulacrum_variables_exactly(): void
     {
-        $payload = $this->builder->buildSimulacrumPayload(
-            $this->contact(),
-            'DABC12',
-            ['full_name' => 'Ada Lovelace'],
-        );
+        $variables = $this->builder->buildSimulacrumVariables('Grace Hopper', 'Ada Lovelace', 'EMG1');
 
-        self::assertSame($this->fixture('payloads/simulacrum.json'), $payload);
+        self::assertSame($this->fixture('payloads/simulacrum.json'), $variables);
     }
 
     public function test_it_builds_the_abort_payload_exactly(): void
@@ -59,33 +49,11 @@ final class WhatsAppPayloadBuilderTest extends TestCase
 
         self::assertSame('user_name', $payload['components'][0]['parameters'][0]['parameter_name']);
         self::assertSame('Ada Lovelace', $payload['components'][0]['parameters'][0]['text']);
-    }
 
-    public function test_it_formats_the_spanish_activation_date(): void
-    {
-        self::assertSame(
-            '28 de Octubre de 2026, 12:35pm',
-            $this->builder->formatActivationDate(new \DateTimeImmutable('2026-10-28 12:35:00')),
-        );
-        self::assertSame(
-            '1 de Enero de 2026, 12:05am',
-            $this->builder->formatActivationDate(new \DateTimeImmutable('2026-01-01 00:05:00')),
-        );
-        self::assertSame(
-            '9 de Diciembre de 2025, 1:09pm',
-            $this->builder->formatActivationDate(new \DateTimeImmutable('2025-12-09 13:09:00')),
-        );
-    }
+        $variables = $this->builder->buildSimulacrumVariables('  Grace   <b>Hopper</b> ', " Ada\n\nLovelace ", 'EMG1');
 
-    public function test_it_builds_local_qr_urls_when_configured(): void
-    {
-        $builder = new WhatsAppPayloadBuilder(local: true);
-        $payload = $builder->buildSimulacrumPayload($this->contact(), 'DABC12', ['full_name' => 'Ada']);
-
-        self::assertSame(
-            'http://localhost/zur.dataemergencia.com/qr/DABC12',
-            $payload['components'][1]['parameters'][2]['text'],
-        );
+        self::assertSame('Grace Hopper', $variables['contact_name']);
+        self::assertSame('Ada Lovelace', $variables['user_name']);
     }
 
     /**

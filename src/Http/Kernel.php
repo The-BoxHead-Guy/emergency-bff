@@ -196,8 +196,8 @@ final class Kernel
             })
             ->add('POST', '/activate', function (Request $request): Response {
                 $identity = $this->identity();
-                $geolocation = $this->geolocation($request);
-                $result = $this->emergency->activate($identity, $geolocation, $this->idempotencyKey($request));
+                $this->geolocation($request);
+                $result = $this->emergency->activate($identity, $this->idempotencyKey($request));
 
                 if ($result->snapshot !== []) {
                     $this->session->storeEmergency($result->snapshot);

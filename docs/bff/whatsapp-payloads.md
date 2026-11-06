@@ -2,129 +2,91 @@
 
 Applies to: maintainers and integrators diagnosing message content.
 
-The BFF builds the payloads in PHP and sends them through
-`POST /v2/whatsapp/templates/send`. The browser never builds a WhatsApp payload.
+The BFF sends only the recipient phone and the endpoint-specific `variables`.
+The upstream API owns the Meta template name, language, header image, date
+formatting, QR links and map data.
 
-## Templates
+## Endpoints
 
-| Scenario   | Template                                      | Image                                                                              |
-| ---------- | --------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Emergency  | `emergency_message_template_v3`               | `https://api.dataemergencia.com/public/images/panic-button/emergency-template.png` |
-| Simulation | `simulacrum_support_contacts_confirmation_v2` | `https://api.dataemergencia.com/public/images/logo_scaem.png`                      |
-| Abort      | `emergency_status_aborting_v1`                | none                                                                               |
+| Scenario   | Endpoint                                           | Variables                                          |
+| ---------- | -------------------------------------------------- | -------------------------------------------------- |
+| Emergency  | `POST /v2/whatsapp/templates/emergency/activation` | `user_name`, `emergency_code`                      |
+| Simulation | `POST /v2/whatsapp/templates/emergency/simulacrum` | `contact_name`, `user_name`, `emergency_code`      |
+| Abort      | `POST /v2/whatsapp/templates/send`                 | Legacy payload with `emergency_status_aborting_v1` |
 
-All three use `"language": "en"`, which is the template language registered
-upstream. The rendered activation date is Spanish.
+Activation and simulacrum no longer send a template name, language, components
+or `google_maps`. Abort keeps the legacy payload because no typed abort endpoint
+exists.
 
-## Emergency payload
+## Emergency request
 
 ```json
 {
-  "to": "573001234567",
-  "template": "emergency_message_template_v3",
-  "language": "en",
-  "google_maps": {
-    "latitude": "4.711",
-    "longitude": "-74.0721",
-    "zoom": 17
-  },
-  "components": [
+  "recipients": [
     {
-      "type": "header",
-      "parameters": [
-        {
-          "type": "image",
-          "image": {
-            "link": "https://api.dataemergencia.com/public/images/panic-button/emergency-template.png"
-          }
-        }
-      ]
-    },
-    {
-      "type": "body",
-      "parameters": [
-        {
-          "type": "text",
-          "parameter_name": "contact_name",
-          "text": "Grace Hopper"
-        },
-        {
-          "type": "text",
-          "parameter_name": "user_name",
-          "text": "Ada Lovelace"
-        },
-        {
-          "type": "text",
-          "parameter_name": "full_date",
-          "text": "3 de Octubre de 2026, 7:05pm"
-        },
-        {
-          "type": "text",
-          "parameter_name": "fmd_url",
-          "text": "https://zur.dataemergencia.com/qr/DABC12"
-        }
-      ]
+      "phone": "573001234567",
+      "variables": {
+        "user_name": "Ada Lovelace",
+        "emergency_code": "EMG123456"
+      }
     }
   ]
 }
 ```
 
-Body parameters, in order:
+`emergency_code` is the upstream emergency id. The API uses it as the URL button
+suffix, so the emergency must exist before the message is sent.
 
-1. `contact_name` — the responder's name from the profile.
-2. `user_name` — the FMD holder's full name, sanitized.
-3. `full_date` — Spanish date, for example `3 de Octubre de 2026, 7:05pm`.
-4. `fmd_url` — QR URL for the product code or identity code.
-
-`google_maps` is a top-level field, not a template component. Latitude and
-longitude are stringified; `zoom` is the number `17`. Missing coordinates become
-empty strings.
-
-## Simulation payload
+## Simulation request
 
 ```json
 {
-  "to": "573001234567",
-  "template": "simulacrum_support_contacts_confirmation_v2",
-  "language": "en",
-  "google_maps": null,
-  "components": [
+  "recipients": [
     {
-      "type": "header",
-      "parameters": [
-        {
-          "type": "image",
-          "image": {
-            "link": "https://api.dataemergencia.com/public/images/logo_scaem.png"
-          }
-        }
-      ]
-    },
-    {
-      "type": "body",
-      "parameters": [
-        {
-          "type": "text",
-          "parameter_name": "contact_name",
-          "text": "Grace Hopper"
-        },
-        {
-          "type": "text",
-          "parameter_name": "user_name",
-          "text": "Ada Lovelace"
-        },
-        {
-          "type": "text",
-          "parameter_name": "medical_profile_url",
-          "text": "https://zur.dataemergencia.com/qr/DABC12"
-        }
-      ]
+      "phone": "573001234567",
+      "variables": {
+        "contact_name": "Grace Hopper",
+        "user_name": "Ada Lovelace",
+        "emergency_code": "EMG123456"
+      }
     }
   ]
 }
 ```
 
-The simulation sends no map data and never creates an emergency.
+The simulation pre-creates an inactive emergency only to obtain a valid
+`emergency_code` for its `/test` link. It stays inactive and the BFF does not
+update it.
+
+## Typed response
+
+Both typed endpoints answer `200` even when an individual recipient fails:
+
+```json
+{
+  "data": {
+    "type": "whatsapp_template",
+    "id": "resource|…",
+    "attributes": {
+      "data": {
+        "event_type": "activation",
+        "results": [
+          {
+            "phone": "573001234567",
+            "status": "sent",
+            "whatsapp_message_id": "wamid.HBgMNTg0MTIxMjM0NTY3FQIAERgS…"
+          }
+        ],
+        "summary": { "total": 1, "sent": 1, "failed": 0 }
+      }
+    }
+  }
+}
+```
+
+A send succeeds only when `data.attributes.data.results[0].status` is `sent` and
+`whatsapp_message_id` is a valid `wamid.`-prefixed value. A `200` with
+`status: failed` becomes a failed `MessageResult`, never a success.
 
 ## Abort payload
 
@@ -158,27 +120,15 @@ The simulation sends no map data and never creates an emergency.
 4. `phone`.
 
 A leading `+` is stripped. No other normalization is applied: country code and
-digits must already be present. An empty result produces an empty `to`, which
+digits must already be present. An empty result produces an empty `phone`, which
 the upstream API rejects; the BFF records that contact as failed.
 
 ## Names
 
-`user_name` and contact names are stripped of HTML tags and normalized to single
-spaces. Blank names become an empty string. Contact names are taken as-is from
-the profile apart from that normalization.
+`user_name` and `contact_name` are stripped of HTML tags and normalized to single
+spaces. Blank names become an empty string.
 
-## QR links
-
-- Host: `EMERGENCY_BFF_QR_BASE_HOST` (default `zur.dataemergencia.com`).
-- Local mode: `EMERGENCY_BFF_LOCAL=true` builds
-  `http://localhost/<qr host>/qr/<code>`.
-- The code is URL-encoded with `rawurlencode`.
-- An empty code produces an empty URL.
-
-`EMERGENCY_BFF_FALLBACK_ORIGIN_URL` is reserved for future fallback behavior; the
-current builder does not use it.
-
-## Idempotency and fan-out
+## Fan-out
 
 Messages are sent one contact at a time. A failure for one contact does not stop
 the rest. The BFF aggregates results into `responders` and `failures` and only

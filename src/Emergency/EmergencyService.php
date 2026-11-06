@@ -9,12 +9,13 @@ use DataEmergencia\EmergencyBff\Api\Profile;
 use DataEmergencia\EmergencyBff\Api\ProfileRepository;
 use DataEmergencia\EmergencyBff\Api\WhatsAppClient;
 use DataEmergencia\EmergencyBff\Emergency\Exception\AlreadyActiveEmergencyException;
+use DataEmergencia\EmergencyBff\Emergency\Exception\ApiFailureException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\EmergencyNotFoundException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\ForbiddenEmergencyException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\MissingContactsException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\MissingProfileException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\WhatsAppFailureException;
-use DataEmergencia\EmergencyBff\WhatsApp\ProductCodeSelector;
+use DataEmergencia\EmergencyBff\WhatsApp\MessageResult;
 use DataEmergencia\EmergencyBff\WhatsApp\Responder;
 use DataEmergencia\EmergencyBff\WhatsApp\ResponderFactory;
 use DataEmergencia\EmergencyBff\WhatsApp\WhatsAppPayloadBuilder;
@@ -31,16 +32,12 @@ final class EmergencyService
         private readonly WhatsAppPayloadBuilder $payloads,
         private readonly WhatsAppClient $whatsApp,
         private readonly EmergencyRepository $emergencies,
-        private readonly ProductCodeSelector $productCodes = new ProductCodeSelector(),
         private readonly ?LoggerInterface $logger = null,
         private readonly ?IdempotencyStore $idempotency = null,
     ) {
     }
 
-    /**
-     * @param array<string, mixed> $geolocation
-     */
-    public function activate(Identity $identity, array $geolocation, ?string $idempotencyKey = null): EmergencyResult
+    public function activate(Identity $identity, ?string $idempotencyKey = null): EmergencyResult
     {
         $cacheKey = $this->cacheKey('activate', $identity, $idempotencyKey);
 
@@ -67,26 +64,37 @@ final class EmergencyService
         }
 
         $responders = $this->responders->createFromContacts($profile->emergencyContacts);
-        $qrCode = $this->productCodes->findValidProductCode($profile->productCodes) ?? $identity->code;
+
+        $snapshot = $this->createEmergency($identity->code, $responders, true);
+        $emergencyId = $this->emergencyId($snapshot);
+
+        if ($emergencyId === null) {
+            throw new ApiFailureException('creating the emergency', 500);
+        }
 
         [$responders, $failures] = $this->sendToResponders(
             $profile,
             $responders,
-            fn (array $contact, array $personalInfo): array => $this->payloads->buildEmergencyPayload(
-                $contact,
-                $geolocation,
-                $personalInfo,
-                $qrCode,
+            fn (array $contact, array $personalInfo): MessageResult => $this->whatsApp->sendActivation(
+                Responder::phoneFromContact($contact),
+                $this->payloads->buildActivationVariables(
+                    (string) ($personalInfo['full_name'] ?? ''),
+                    $emergencyId,
+                ),
             ),
         );
 
         if ($this->allFailed($responders)) {
+            $this->emergencies->delete($emergencyId);
+
             throw new WhatsAppFailureException($failures);
         }
 
-        $snapshot = $this->emergencies->create(
+        $snapshot = $this->emergencies->update(
+            $emergencyId,
             $identity->code,
-            array_map(static fn (Responder $responder): array => $responder->toArray(), $responders),
+            $this->responderPayloads($responders),
+            true,
         );
 
         $result = new EmergencyResult(
@@ -129,19 +137,30 @@ final class EmergencyService
         }
 
         $responders = $this->responders->createFromContacts($profile->emergencyContacts);
-        $qrCode = $this->productCodes->findValidProductCode($profile->productCodes) ?? $identity->code;
+
+        $snapshot = $this->createEmergency($identity->code, $responders, false);
+        $emergencyId = $this->emergencyId($snapshot);
+
+        if ($emergencyId === null) {
+            throw new ApiFailureException('creating the emergency', 500);
+        }
 
         [$responders, $failures] = $this->sendToResponders(
             $profile,
             $responders,
-            fn (array $contact, array $personalInfo): array => $this->payloads->buildSimulacrumPayload(
-                $contact,
-                $qrCode,
-                $personalInfo,
+            fn (array $contact, array $personalInfo): MessageResult => $this->whatsApp->sendSimulacrum(
+                Responder::phoneFromContact($contact),
+                $this->payloads->buildSimulacrumVariables(
+                    is_string($contact['name'] ?? null) ? $contact['name'] : '',
+                    (string) ($personalInfo['full_name'] ?? ''),
+                    $emergencyId,
+                ),
             ),
         );
 
         if ($this->allFailed($responders)) {
+            $this->emergencies->delete($emergencyId);
+
             throw new WhatsAppFailureException($failures);
         }
 
@@ -179,9 +198,8 @@ final class EmergencyService
         [$responders, $failures] = $this->sendToResponders(
             $profile,
             $responders,
-            fn (array $contact, array $personalInfo): array => $this->payloads->buildAbortPayload(
-                $contact,
-                $personalInfo,
+            fn (array $contact, array $personalInfo): MessageResult => $this->whatsApp->send(
+                $this->payloads->buildAbortPayload($contact, $personalInfo),
             ),
         );
 
@@ -220,10 +238,10 @@ final class EmergencyService
 
     /**
      * @param array<int, Responder> $responders
-     * @param callable(array<string, mixed>, array<string, mixed>): array<string, mixed> $payloadFactory
+     * @param callable(array<string, mixed>, array<string, mixed>): MessageResult $sender
      * @return array{0: array<int, Responder>, 1: array<int, array<string, mixed>>}
      */
-    private function sendToResponders(Profile $profile, array $responders, callable $payloadFactory): array
+    private function sendToResponders(Profile $profile, array $responders, callable $sender): array
     {
         $failures = [];
         $contacts = $profile->emergencyContacts;
@@ -240,7 +258,7 @@ final class EmergencyService
                 continue;
             }
 
-            $result = $this->whatsApp->send($payloadFactory($contact, $profile->personalInfo));
+            $result = $sender($contact, $profile->personalInfo);
 
             if (!$result->success) {
                 $failures[] = $this->recordFailure(
@@ -302,6 +320,32 @@ final class EmergencyService
         $failure['message'] = $message;
 
         return $failure;
+    }
+
+    /**
+     * @param array<int, Responder> $responders
+     * @return array<string, mixed>
+     */
+    private function createEmergency(string $code, array $responders, bool $isActive): array
+    {
+        try {
+            return $this->emergencies->create($code, $this->responderPayloads($responders), $isActive);
+        } catch (ApiFailureException $exception) {
+            if ($exception->status() === 409) {
+                throw new AlreadyActiveEmergencyException($code, '');
+            }
+
+            throw $exception;
+        }
+    }
+
+    /**
+     * @param array<int, Responder> $responders
+     * @return array<int, array<string, mixed>>
+     */
+    private function responderPayloads(array $responders): array
+    {
+        return array_map(static fn (Responder $responder): array => $responder->toArray(), $responders);
     }
 
     /**
