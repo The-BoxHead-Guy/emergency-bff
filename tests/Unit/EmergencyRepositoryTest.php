@@ -62,6 +62,25 @@ final class EmergencyRepositoryTest extends TestCase
         self::assertSame('42', $normalized['responders'][0]['message_id']);
     }
 
+    public function test_it_includes_the_reporter_phone_in_the_create_body(): void
+    {
+        $client = $this->client();
+
+        (new EmergencyRepository($client))->create('DABC12', [], true, '+584121301234');
+
+        self::assertSame('+584121301234', $client->calls[0]['body']['reporter_phone']);
+    }
+
+    public function test_it_nulls_the_reporter_phone_when_absent(): void
+    {
+        $client = $this->client();
+
+        (new EmergencyRepository($client))->create('DABC12', []);
+
+        self::assertArrayHasKey('reporter_phone', $client->calls[0]['body']);
+        self::assertNull($client->calls[0]['body']['reporter_phone']);
+    }
+
     /**
      * @param array<string, mixed> $body
      */
@@ -70,6 +89,13 @@ final class EmergencyRepositoryTest extends TestCase
         return new EmergencyRepository(new FakeApiClient(
             static fn (): ApiResponse => new ApiResponse(200, $body),
         ));
+    }
+
+    private function client(): FakeApiClient
+    {
+        return new FakeApiClient(static fn (): ApiResponse => new ApiResponse(201, [
+            'data' => ['attributes' => ['emergency_id' => 'EMG1']],
+        ]));
     }
 
     /**

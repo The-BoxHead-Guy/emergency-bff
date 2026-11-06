@@ -23,12 +23,13 @@ final class EmergencyRepository
      * @param array<int, array<string, mixed>> $responders
      * @return array<string, mixed>
      */
-    public function create(string $code, array $responders, bool $isActive = true): array
+    public function create(string $code, array $responders, bool $isActive = true, ?string $reporterPhone = null): array
     {
         try {
             $response = $this->client->post(Endpoints::postState(), [
                 'is_active' => $isActive,
                 'initiator_id' => $code,
+                'reporter_phone' => $reporterPhone,
                 'responders' => $responders,
             ]);
         } catch (ApiException $exception) {

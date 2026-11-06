@@ -171,6 +171,54 @@ final class KernelTest extends TestCase
         self::assertCount(1, $this->client->callsTo('DELETE', '/v2/emergency/EMG1'));
     }
 
+    public function test_activation_forwards_the_reporter_phone_upstream(): void
+    {
+        $kernel = $this->kernel();
+        $token = $this->csrfToken($kernel);
+        $session = $kernel->handle($this->json('POST', '/de-bff/emergency/session', ['code' => 'DABC12'], $token));
+
+        $response = $kernel->handle($this->json('POST', '/de-bff/emergency/activate', [
+            'geolocation' => ['coords' => ['latitude' => 4.711, 'longitude' => -74.0721]],
+            'reporter_phone' => '+584121301234',
+        ], $session->body()['csrf_token']));
+
+        self::assertSame(201, $response->status());
+
+        $created = $this->client->callsTo('POST', '/v2/emergency')[0]['body'];
+        self::assertSame('+584121301234', $created['reporter_phone']);
+    }
+
+    public function test_activation_succeeds_without_a_reporter_phone(): void
+    {
+        $kernel = $this->kernel();
+        $token = $this->csrfToken($kernel);
+        $session = $kernel->handle($this->json('POST', '/de-bff/emergency/session', ['code' => 'DABC12'], $token));
+
+        $response = $kernel->handle($this->json('POST', '/de-bff/emergency/activate', [
+            'geolocation' => ['coords' => ['latitude' => 4.711, 'longitude' => -74.0721]],
+        ], $session->body()['csrf_token']));
+
+        self::assertSame(201, $response->status());
+
+        $created = $this->client->callsTo('POST', '/v2/emergency')[0]['body'];
+        self::assertNull($created['reporter_phone']);
+    }
+
+    public function test_activation_rejects_a_malformed_reporter_phone_before_the_upstream_call(): void
+    {
+        $kernel = $this->kernel();
+        $token = $this->csrfToken($kernel);
+        $session = $kernel->handle($this->json('POST', '/de-bff/emergency/session', ['code' => 'DABC12'], $token));
+
+        $response = $kernel->handle($this->json('POST', '/de-bff/emergency/activate', [
+            'reporter_phone' => 'not-a-phone',
+        ], $session->body()['csrf_token']));
+
+        self::assertSame(422, $response->status());
+        self::assertSame('validation_failed', $response->body()['error']['code']);
+        self::assertCount(0, $this->client->callsTo('POST', '/v2/emergency'));
+    }
+
     public function test_it_rejects_mutating_requests_without_a_csrf_token(): void
     {
         $kernel = $this->kernel();

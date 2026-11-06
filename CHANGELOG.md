@@ -6,6 +6,14 @@ and [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-06
+
+### Added
+
+- `POST /activate` now accepts an optional `reporter_phone` (E.164), forwards
+  it to the upstream emergency creation, and returns it on the activation
+  result.
+
 ## [0.3.0] - 2026-11-06
 
 ### Changed

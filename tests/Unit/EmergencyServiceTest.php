@@ -181,6 +181,27 @@ final class EmergencyServiceTest extends TestCase
         self::assertSame('130', $result->toArray()['emergency_id']);
     }
 
+    public function test_activation_returns_the_reporter_phone(): void
+    {
+        [$service, $client] = $this->service();
+
+        $result = $service->activate(Identity::fromCode('DABC12'), null, '+584121301234');
+
+        self::assertSame('+584121301234', $result->reporterPhone);
+        self::assertSame('+584121301234', $result->toArray()['reporter_phone']);
+        self::assertSame('+584121301234', $client->callsTo('POST', '/v2/emergency')[0]['body']['reporter_phone']);
+    }
+
+    public function test_the_simulacrum_sends_a_null_reporter_phone(): void
+    {
+        [$service, $client] = $this->service();
+
+        $result = $service->simulacrum(Identity::fromCode('DABC12'));
+
+        self::assertNull($result->reporterPhone);
+        self::assertNull($client->callsTo('POST', '/v2/emergency')[0]['body']['reporter_phone']);
+    }
+
     public function test_it_reports_partial_failures_and_still_creates_the_emergency(): void
     {
         $calls = 0;

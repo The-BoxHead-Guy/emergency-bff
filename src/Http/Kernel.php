@@ -197,7 +197,11 @@ final class Kernel
             ->add('POST', '/activate', function (Request $request): Response {
                 $identity = $this->identity();
                 $this->geolocation($request);
-                $result = $this->emergency->activate($identity, $this->idempotencyKey($request));
+                $result = $this->emergency->activate(
+                    $identity,
+                    $this->idempotencyKey($request),
+                    $this->reporterPhone($request),
+                );
 
                 if ($result->snapshot !== []) {
                     $this->session->storeEmergency($result->snapshot);
@@ -275,6 +279,41 @@ final class Kernel
         $key = $request->header('idempotency-key') ?? $request->input('idempotency_key');
 
         return is_string($key) && trim($key) !== '' ? trim($key) : null;
+    }
+
+    private function reporterPhone(Request $request): ?string
+    {
+        $value = $request->input('reporter_phone');
+
+        if ($value === null) {
+            return null;
+        }
+
+        if (!is_string($value)) {
+            throw new HttpError(422, 'validation_failed', 'The reporter phone must be a string.', [
+                'field' => 'reporter_phone',
+            ]);
+        }
+
+        $phone = trim($value);
+
+        if ($phone === '') {
+            return null;
+        }
+
+        if (mb_strlen($phone) > 20) {
+            throw new HttpError(422, 'validation_failed', 'The reporter phone may not be greater than 20 characters.', [
+                'field' => 'reporter_phone',
+            ]);
+        }
+
+        if (preg_match('/^\+?\d{7,15}$/', $phone) !== 1) {
+            throw new HttpError(422, 'validation_failed', 'The reporter phone must be a valid E.164 phone number.', [
+                'field' => 'reporter_phone',
+            ]);
+        }
+
+        return $phone;
     }
 
     /**

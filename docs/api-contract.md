@@ -129,6 +129,7 @@ GET /current
   "emergency": {
     "emergency_id": "EMG123456",
     "initiator_id": "DABC12",
+    "reporter_phone": "+584121301234",
     "is_active": true,
     "is_simulated": false,
     "created_at": "2026-10-28T14:05:00Z",
@@ -147,6 +148,9 @@ When no emergency exists:
 `GET /current` is how a reload discovers an emergency. It is also the
 reconciliation source when realtime is unavailable.
 
+`reporter_phone` is `null` when no reporter phone was supplied for that
+emergency.
+
 ## Activate
 
 ```http
@@ -160,12 +164,18 @@ Idempotency-Key: 6f1c…
     "latitude": 4.711,
     "longitude": -74.0721,
     "accuracy": 12
-  }
+  },
+  "reporter_phone": "+584121301234"
 }
 ```
 
 `geolocation` is optional and validated when present. The typed activation
 template does not consume it; the API owns the Meta payload.
+
+`reporter_phone` is optional. When present it must be an E.164 value: an
+optional leading `+` followed by 7–15 digits. The BFF trims it and forwards it
+to the upstream `POST /v2/emergency`; a malformed value returns
+`422 validation_failed` before any upstream call.
 
 ```http
 201 Created
@@ -175,6 +185,7 @@ template does not consume it; the API owns the Meta payload.
 {
   "emergency_id": "EMG123456",
   "simulated": false,
+  "reporter_phone": "+584121301234",
   "responders": [
     {
       "phone": "573001234567",
@@ -194,6 +205,8 @@ template does not consume it; the API owns the Meta payload.
 
 The response does not include the internal snapshot. Frontends reconstruct it
 from the returned fields.
+
+`reporter_phone` is `null` when no reporter phone was supplied on activation.
 
 Behavior:
 
@@ -265,6 +278,7 @@ X-CSRF-Token: …
   "emergency": {
     "emergency_id": "EMG123456",
     "initiator_id": "DABC12",
+    "reporter_phone": "+584121301234",
     "is_active": true,
     "is_simulated": false,
     "responders": [

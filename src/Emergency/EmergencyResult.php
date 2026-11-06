@@ -21,6 +21,7 @@ final class EmergencyResult
         public readonly array $failures = [],
         public readonly bool $simulated = false,
         public readonly array $snapshot = [],
+        public readonly ?string $reporterPhone = null,
     ) {
     }
 
@@ -60,6 +61,7 @@ final class EmergencyResult
             failures: is_array($payload['failures'] ?? null) ? $payload['failures'] : [],
             simulated: (bool) ($payload['simulated'] ?? false),
             snapshot: is_array($payload['snapshot'] ?? null) ? $payload['snapshot'] : [],
+            reporterPhone: isset($payload['reporter_phone']) ? (string) $payload['reporter_phone'] : null,
         );
     }
 
@@ -71,6 +73,7 @@ final class EmergencyResult
         return [
             'emergency_id' => $this->emergencyId,
             'simulated' => $this->simulated,
+            'reporter_phone' => $this->reporterPhone,
             'responders' => array_map(
                 static fn (Responder $responder): array => $responder->toArray(),
                 $this->responders,

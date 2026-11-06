@@ -37,7 +37,7 @@ final class EmergencyService
     ) {
     }
 
-    public function activate(Identity $identity, ?string $idempotencyKey = null): EmergencyResult
+    public function activate(Identity $identity, ?string $idempotencyKey = null, ?string $reporterPhone = null): EmergencyResult
     {
         $cacheKey = $this->cacheKey('activate', $identity, $idempotencyKey);
 
@@ -65,7 +65,7 @@ final class EmergencyService
 
         $responders = $this->responders->createFromContacts($profile->emergencyContacts);
 
-        $snapshot = $this->createEmergency($identity->code, $responders, true);
+        $snapshot = $this->createEmergency($identity->code, $responders, true, $reporterPhone);
         $emergencyId = $this->emergencyId($snapshot);
 
         if ($emergencyId === null) {
@@ -102,6 +102,9 @@ final class EmergencyService
             responders: $responders,
             failures: $failures,
             snapshot: $snapshot,
+            reporterPhone: is_string($snapshot['reporter_phone'] ?? null)
+                ? $snapshot['reporter_phone']
+                : $reporterPhone,
         );
 
         $this->logger?->info('emergency.activated', [
@@ -164,7 +167,7 @@ final class EmergencyService
             throw new WhatsAppFailureException($failures);
         }
 
-        $result = new EmergencyResult(null, $responders, $failures, simulated: true);
+        $result = new EmergencyResult(null, $responders, $failures, simulated: true, reporterPhone: null);
 
         $this->logger?->info('emergency.simulacrum', [
             'code' => $identity->code,
@@ -326,10 +329,10 @@ final class EmergencyService
      * @param array<int, Responder> $responders
      * @return array<string, mixed>
      */
-    private function createEmergency(string $code, array $responders, bool $isActive): array
+    private function createEmergency(string $code, array $responders, bool $isActive, ?string $reporterPhone = null): array
     {
         try {
-            return $this->emergencies->create($code, $this->responderPayloads($responders), $isActive);
+            return $this->emergencies->create($code, $this->responderPayloads($responders), $isActive, $reporterPhone);
         } catch (ApiFailureException $exception) {
             if ($exception->status() === 409) {
                 throw new AlreadyActiveEmergencyException($code, '');
