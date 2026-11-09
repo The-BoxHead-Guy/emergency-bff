@@ -48,8 +48,11 @@ token. No profile data is fetched yet.
 ### 2. Activation request
 
 `POST /activate` accepts either flat `latitude`/`longitude` fields or a nested
-`coords` object. Coordinates remain optional and are validated when present; the
-typed activation template does not consume them, because the API owns the Meta
+`coords` object. Coordinates remain optional and are validated when present,
+then flattened and forwarded to the upstream `POST /v2/emergency` as
+`geolocation` together with `is_simulated: false`. The BFF does not persist the
+location; the API stores it through its own domain event. The typed activation
+template does not consume the coordinates, because the API owns the Meta
 payload.
 
 The optional `Idempotency-Key` header (or `idempotency_key` body field) scopes a
@@ -74,10 +77,11 @@ Missing data returns `422 missing_medical_profile` or
 ### 4. Emergency creation
 
 The BFF creates the upstream emergency active before sending, with the
-responders from the profile and `initiator_id: code`. The typed templates use the
-emergency id as their `emergency_code` URL suffix, so the record must exist
-first. An upstream `409` during creation becomes
-`409 emergency_already_active`, so a race still returns the domain error.
+responders from the profile, `initiator_id: code`, `is_simulated: false` and the
+validated `geolocation` when supplied. The typed templates use the emergency id
+as their `emergency_code` URL suffix, so the record must exist first. An
+upstream `409` during creation becomes `409 emergency_already_active`, so a race
+still returns the domain error.
 
 ### 5. Message dispatch
 
@@ -121,8 +125,12 @@ reconnect and at a throttled interval. Delivery statuses are read, not inferred.
 
 ## Simulation
 
-`POST /simulacrum` follows the same profile and contact checks. It first creates
-an inactive emergency to obtain a valid `emergency_code`, then calls
+`POST /simulacrum` follows the same profile and contact checks. It accepts the
+same optional `geolocation` payload as `/activate`, validates and flattens it,
+then first creates an inactive emergency with `is_simulated: true` and the
+validated `geolocation` to obtain a valid `emergency_code`. The API persists the
+simulated emergency's location through its own domain event; the BFF does not
+store it. The BFF then calls
 `POST /v2/whatsapp/templates/emergency/simulacrum` with `contact_name`,
 `user_name` and `emergency_code`. The created record stays inactive and is never
 written back. When every send fails, the BFF deletes the record it created.

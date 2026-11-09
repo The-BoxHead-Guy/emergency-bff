@@ -169,8 +169,13 @@ Idempotency-Key: 6f1c…
 }
 ```
 
-`geolocation` is optional and validated when present. The typed activation
-template does not consume it; the API owns the Meta payload.
+`geolocation` is optional. The BFF accepts both flat `latitude`/`longitude`
+fields and a nested `coords` object, validates that the coordinates are numeric,
+flattens them, and forwards the result to the upstream `POST /v2/emergency` as
+`geolocation` with `is_simulated: false`. `accuracy` is forwarded when present;
+the API maps it to `accuracy_meters`. Invalid values return
+`422 validation_failed` before any upstream call. The BFF does not persist the
+location or generate map links; the API stores it through its own domain event.
 
 `reporter_phone` is optional. When present it must be an E.164 value: an
 optional leading `+` followed by 7–15 digits. The BFF trims it and forwards it
@@ -246,9 +251,25 @@ configure a shared store before running multiple PHP workers.
 ```http
 POST /simulacrum
 X-CSRF-Token: …
+Content-Type: application/json
 ```
 
-No body required. Sends the typed simulation template to every contact.
+```json
+{
+  "geolocation": {
+    "latitude": 4.711,
+    "longitude": -74.0721,
+    "accuracy": 12
+  }
+}
+```
+
+The body is optional. `geolocation` follows the same rules as `/activate`:
+flat or nested coordinates, numeric validation, and a `422 validation_failed`
+before any upstream call when invalid. The BFF forwards it to
+`POST /v2/emergency` with `is_simulated: true` and `is_active: false`, so the
+API can persist the location and distinguish the simulacrum from a real
+emergency. The BFF itself does not persist locations.
 
 ```json
 {

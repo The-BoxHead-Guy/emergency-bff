@@ -196,11 +196,11 @@ final class Kernel
             })
             ->add('POST', '/activate', function (Request $request): Response {
                 $identity = $this->identity();
-                $this->geolocation($request);
                 $result = $this->emergency->activate(
                     $identity,
                     $this->idempotencyKey($request),
                     $this->reporterPhone($request),
+                    $this->geolocation($request),
                 );
 
                 if ($result->snapshot !== []) {
@@ -215,6 +215,7 @@ final class Kernel
                 return Response::json($this->resultPayload($this->emergency->simulacrum(
                     $identity,
                     $this->idempotencyKey($request),
+                    $this->geolocation($request),
                 )));
             })
             ->add('POST', '/{id}/refresh', function (Request $request, array $params): Response {
@@ -247,11 +248,18 @@ final class Kernel
     }
 
     /**
-     * @return array<string, mixed>
+     * Validates the optional geolocation payload and flattens the coordinate
+     * shape before forwarding it upstream.
+     *
+     * @return array<string, mixed>|null
      */
-    private function geolocation(Request $request): array
+    private function geolocation(Request $request): ?array
     {
-        $geolocation = $request->input('geolocation', []);
+        $geolocation = $request->input('geolocation');
+
+        if ($geolocation === null) {
+            return null;
+        }
 
         if (!is_array($geolocation)) {
             throw new HttpError(422, 'validation_failed', 'The geolocation payload must be an object.', [
@@ -271,7 +279,33 @@ final class Kernel
             }
         }
 
-        return $geolocation;
+        $accuracy = $coordinates['accuracy'] ?? $geolocation['accuracy'] ?? null;
+
+        if ($accuracy !== null && !is_numeric($accuracy)) {
+            throw new HttpError(422, 'validation_failed', 'The geolocation accuracy must be numeric.', [
+                'field' => 'geolocation.accuracy',
+            ]);
+        }
+
+        $flat = [];
+
+        foreach (['latitude', 'longitude'] as $field) {
+            if (array_key_exists($field, $coordinates)) {
+                $flat[$field] = (float) $coordinates[$field];
+            }
+        }
+
+        if ($accuracy !== null) {
+            $flat['accuracy'] = (float) $accuracy;
+        }
+
+        foreach (['source', 'recorded_at'] as $field) {
+            if (array_key_exists($field, $geolocation)) {
+                $flat[$field] = $geolocation[$field];
+            }
+        }
+
+        return $flat === [] ? null : $flat;
     }
 
     private function idempotencyKey(Request $request): ?string

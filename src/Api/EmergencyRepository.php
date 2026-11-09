@@ -21,17 +21,31 @@ final class EmergencyRepository
 
     /**
      * @param array<int, array<string, mixed>> $responders
+     * @param array<string, mixed>|null $geolocation
      * @return array<string, mixed>
      */
-    public function create(string $code, array $responders, bool $isActive = true, ?string $reporterPhone = null): array
-    {
+    public function create(
+        string $code,
+        array $responders,
+        bool $isActive = true,
+        ?string $reporterPhone = null,
+        ?array $geolocation = null,
+        bool $isSimulated = false,
+    ): array {
+        $payload = [
+            'is_active' => $isActive,
+            'initiator_id' => $code,
+            'reporter_phone' => $reporterPhone,
+            'responders' => $responders,
+            'is_simulated' => $isSimulated,
+        ];
+
+        if ($geolocation !== null) {
+            $payload['geolocation'] = $geolocation;
+        }
+
         try {
-            $response = $this->client->post(Endpoints::postState(), [
-                'is_active' => $isActive,
-                'initiator_id' => $code,
-                'reporter_phone' => $reporterPhone,
-                'responders' => $responders,
-            ]);
+            $response = $this->client->post(Endpoints::postState(), $payload);
         } catch (ApiException $exception) {
             throw new ApiFailureException('creating the emergency', $exception->status(), $exception);
         }

@@ -37,8 +37,12 @@ final class EmergencyService
     ) {
     }
 
-    public function activate(Identity $identity, ?string $idempotencyKey = null, ?string $reporterPhone = null): EmergencyResult
-    {
+    public function activate(
+        Identity $identity,
+        ?string $idempotencyKey = null,
+        ?string $reporterPhone = null,
+        ?array $geolocation = null,
+    ): EmergencyResult {
         $cacheKey = $this->cacheKey('activate', $identity, $idempotencyKey);
 
         if ($cacheKey !== null && is_array($cached = $this->idempotency?->get($cacheKey))) {
@@ -65,7 +69,7 @@ final class EmergencyService
 
         $responders = $this->responders->createFromContacts($profile->emergencyContacts);
 
-        $snapshot = $this->createEmergency($identity->code, $responders, true, $reporterPhone);
+        $snapshot = $this->createEmergency($identity->code, $responders, true, $reporterPhone, $geolocation, false);
         $emergencyId = $this->emergencyId($snapshot);
 
         if ($emergencyId === null) {
@@ -121,8 +125,11 @@ final class EmergencyService
         return $result;
     }
 
-    public function simulacrum(Identity $identity, ?string $idempotencyKey = null): EmergencyResult
-    {
+    public function simulacrum(
+        Identity $identity,
+        ?string $idempotencyKey = null,
+        ?array $geolocation = null,
+    ): EmergencyResult {
         $cacheKey = $this->cacheKey('simulacrum', $identity, $idempotencyKey);
 
         if ($cacheKey !== null && is_array($cached = $this->idempotency?->get($cacheKey))) {
@@ -141,7 +148,7 @@ final class EmergencyService
 
         $responders = $this->responders->createFromContacts($profile->emergencyContacts);
 
-        $snapshot = $this->createEmergency($identity->code, $responders, false);
+        $snapshot = $this->createEmergency($identity->code, $responders, false, null, $geolocation, true);
         $emergencyId = $this->emergencyId($snapshot);
 
         if ($emergencyId === null) {
@@ -327,12 +334,26 @@ final class EmergencyService
 
     /**
      * @param array<int, Responder> $responders
+     * @param array<string, mixed>|null $geolocation
      * @return array<string, mixed>
      */
-    private function createEmergency(string $code, array $responders, bool $isActive, ?string $reporterPhone = null): array
-    {
+    private function createEmergency(
+        string $code,
+        array $responders,
+        bool $isActive,
+        ?string $reporterPhone = null,
+        ?array $geolocation = null,
+        bool $isSimulated = false,
+    ): array {
         try {
-            return $this->emergencies->create($code, $this->responderPayloads($responders), $isActive, $reporterPhone);
+            return $this->emergencies->create(
+                $code,
+                $this->responderPayloads($responders),
+                $isActive,
+                $reporterPhone,
+                $geolocation,
+                $isSimulated,
+            );
         } catch (ApiFailureException $exception) {
             if ($exception->status() === 409) {
                 throw new AlreadyActiveEmergencyException($code, '');

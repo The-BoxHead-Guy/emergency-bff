@@ -219,6 +219,102 @@ final class KernelTest extends TestCase
         self::assertCount(0, $this->client->callsTo('POST', '/v2/emergency'));
     }
 
+    public function test_activation_forwards_a_flat_geolocation_payload(): void
+    {
+        $kernel = $this->kernel();
+        $token = $this->csrfToken($kernel);
+        $session = $kernel->handle($this->json('POST', '/de-bff/emergency/session', ['code' => 'DABC12'], $token));
+
+        $response = $kernel->handle($this->json('POST', '/de-bff/emergency/activate', [
+            'geolocation' => ['latitude' => 4.711, 'longitude' => -74.0721, 'accuracy' => 12.5],
+        ], $session->body()['csrf_token']));
+
+        self::assertSame(201, $response->status());
+
+        $created = $this->client->callsTo('POST', '/v2/emergency')[0]['body'];
+        self::assertSame(['latitude' => 4.711, 'longitude' => -74.0721, 'accuracy' => 12.5], $created['geolocation']);
+        self::assertFalse($created['is_simulated']);
+    }
+
+    public function test_activation_flattens_and_forwards_a_nested_geolocation_payload(): void
+    {
+        $kernel = $this->kernel();
+        $token = $this->csrfToken($kernel);
+        $session = $kernel->handle($this->json('POST', '/de-bff/emergency/session', ['code' => 'DABC12'], $token));
+
+        $response = $kernel->handle($this->json('POST', '/de-bff/emergency/activate', [
+            'geolocation' => ['coords' => ['latitude' => '4.7110', 'longitude' => '-74.0721']],
+        ], $session->body()['csrf_token']));
+
+        self::assertSame(201, $response->status());
+
+        $created = $this->client->callsTo('POST', '/v2/emergency')[0]['body'];
+        self::assertSame(['latitude' => 4.711, 'longitude' => -74.0721], $created['geolocation']);
+    }
+
+    public function test_activation_omits_geolocation_when_absent(): void
+    {
+        $kernel = $this->kernel();
+        $token = $this->csrfToken($kernel);
+        $session = $kernel->handle($this->json('POST', '/de-bff/emergency/session', ['code' => 'DABC12'], $token));
+
+        $response = $kernel->handle($this->json('POST', '/de-bff/emergency/activate', [], $session->body()['csrf_token']));
+
+        self::assertSame(201, $response->status());
+
+        $created = $this->client->callsTo('POST', '/v2/emergency')[0]['body'];
+        self::assertArrayNotHasKey('geolocation', $created);
+    }
+
+    public function test_activation_rejects_invalid_geolocation_before_the_upstream_call(): void
+    {
+        $kernel = $this->kernel();
+        $token = $this->csrfToken($kernel);
+        $session = $kernel->handle($this->json('POST', '/de-bff/emergency/session', ['code' => 'DABC12'], $token));
+
+        $response = $kernel->handle($this->json('POST', '/de-bff/emergency/activate', [
+            'geolocation' => ['coords' => ['latitude' => 'north', 'longitude' => -74.0721]],
+        ], $session->body()['csrf_token']));
+
+        self::assertSame(422, $response->status());
+        self::assertSame('validation_failed', $response->body()['error']['code']);
+        self::assertCount(0, $this->client->callsTo('POST', '/v2/emergency'));
+    }
+
+    public function test_the_simulacrum_forwards_geolocation_and_marks_the_emergency_as_simulated(): void
+    {
+        $kernel = $this->kernel();
+        $token = $this->csrfToken($kernel);
+        $session = $kernel->handle($this->json('POST', '/de-bff/emergency/session', ['code' => 'DABC12'], $token));
+
+        $response = $kernel->handle($this->json('POST', '/de-bff/emergency/simulacrum', [
+            'geolocation' => ['latitude' => 4.711, 'longitude' => -74.0721],
+        ], $session->body()['csrf_token']));
+
+        self::assertSame(200, $response->status());
+        self::assertTrue($response->body()['simulated']);
+
+        $created = $this->client->callsTo('POST', '/v2/emergency')[0]['body'];
+        self::assertFalse($created['is_active']);
+        self::assertTrue($created['is_simulated']);
+        self::assertSame(['latitude' => 4.711, 'longitude' => -74.0721], $created['geolocation']);
+    }
+
+    public function test_the_simulacrum_rejects_invalid_geolocation_before_the_upstream_call(): void
+    {
+        $kernel = $this->kernel();
+        $token = $this->csrfToken($kernel);
+        $session = $kernel->handle($this->json('POST', '/de-bff/emergency/session', ['code' => 'DABC12'], $token));
+
+        $response = $kernel->handle($this->json('POST', '/de-bff/emergency/simulacrum', [
+            'geolocation' => ['latitude' => 'north', 'longitude' => -74.0721],
+        ], $session->body()['csrf_token']));
+
+        self::assertSame(422, $response->status());
+        self::assertSame('validation_failed', $response->body()['error']['code']);
+        self::assertCount(0, $this->client->callsTo('POST', '/v2/emergency'));
+    }
+
     public function test_it_rejects_mutating_requests_without_a_csrf_token(): void
     {
         $kernel = $this->kernel();

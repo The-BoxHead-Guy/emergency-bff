@@ -6,6 +6,17 @@ and [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-09
+
+### Added
+
+- `POST /simulacrum` now accepts the optional `geolocation` payload, validates
+  it and forwards it upstream with `is_simulated: true`.
+- Activation and simulacrum now forward the validated, flattened `geolocation`
+  to `POST /v2/emergency`, with `is_simulated: false` for real activations. The
+  API persists the location through its own domain event; the BFF stores
+  nothing.
+
 ## [0.3.1] - 2026-11-06
 
 ### Added
