@@ -6,6 +6,14 @@ and [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-11
+
+### Changed
+
+- `POST /simulacrum` now creates the upstream emergency with `is_active: true`
+  (and `is_simulated: true`) instead of leaving it inactive, so the API can
+  serve active simulated emergencies through its simulacrum report.
+
 ## [0.4.0] - 2026-11-09
 
 ### Added

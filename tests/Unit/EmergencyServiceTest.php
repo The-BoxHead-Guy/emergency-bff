@@ -322,7 +322,7 @@ final class EmergencyServiceTest extends TestCase
         }
     }
 
-    public function test_the_simulacrum_pre_creates_an_inactive_emergency(): void
+    public function test_the_simulacrum_pre_creates_an_active_emergency(): void
     {
         [$service, $client] = $this->service();
 
@@ -333,7 +333,8 @@ final class EmergencyServiceTest extends TestCase
 
         $created = $client->callsTo('POST', '/v2/emergency');
         self::assertCount(1, $created);
-        self::assertFalse($created[0]['body']['is_active']);
+        self::assertTrue($created[0]['body']['is_active']);
+        self::assertTrue($created[0]['body']['is_simulated']);
 
         $payload = $client->callsTo('POST', 'emergency/simulacrum')[0]['body'];
         self::assertSame('EMG1', $payload['recipients'][0]['variables']['emergency_code']);

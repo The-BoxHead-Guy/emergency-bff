@@ -127,16 +127,16 @@ reconnect and at a throttled interval. Delivery statuses are read, not inferred.
 
 `POST /simulacrum` follows the same profile and contact checks. It accepts the
 same optional `geolocation` payload as `/activate`, validates and flattens it,
-then first creates an inactive emergency with `is_simulated: true` and the
-validated `geolocation` to obtain a valid `emergency_code`. The API persists the
-simulated emergency's location through its own domain event; the BFF does not
+then first creates an active simulated emergency with `is_simulated: true` and
+the validated `geolocation` to obtain a valid `emergency_code`. The API persists
+the simulated emergency's location through its own domain event; the BFF does not
 store it. The BFF then calls
 `POST /v2/whatsapp/templates/emergency/simulacrum` with `contact_name`,
-`user_name` and `emergency_code`. The created record stays inactive and is never
+`user_name` and `emergency_code`. The created record stays active and is never
 written back. When every send fails, the BFF deletes the record it created.
 
-The response has `simulated: true` and `emergency_id: null`, so a simulation
-cannot be resumed or aborted as a real emergency.
+The response has `simulated: true` and `emergency_id: null`, so the BFF does not
+expose the created id to the client.
 
 ## Idempotency and retries
 

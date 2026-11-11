@@ -267,7 +267,7 @@ Content-Type: application/json
 The body is optional. `geolocation` follows the same rules as `/activate`:
 flat or nested coordinates, numeric validation, and a `422 validation_failed`
 before any upstream call when invalid. The BFF forwards it to
-`POST /v2/emergency` with `is_simulated: true` and `is_active: false`, so the
+`POST /v2/emergency` with `is_simulated: true` and `is_active: true`, so the
 API can persist the location and distinguish the simulacrum from a real
 emergency. The BFF itself does not persist locations.
 
@@ -283,9 +283,9 @@ emergency. The BFF itself does not persist locations.
 ```
 
 Simulation never checks for an existing active emergency. It pre-creates an
-inactive emergency only to obtain a valid `emergency_code`, leaves it inactive
-and does not update it. A total delivery failure deletes that record and returns
-`502 whatsapp_delivery_failed`.
+active simulated emergency only to obtain a valid `emergency_code`, leaves it
+active and does not update it. A total delivery failure deletes that record and
+returns `502 whatsapp_delivery_failed`.
 
 ## Refresh
 

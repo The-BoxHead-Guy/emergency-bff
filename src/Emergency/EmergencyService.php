@@ -148,7 +148,7 @@ final class EmergencyService
 
         $responders = $this->responders->createFromContacts($profile->emergencyContacts);
 
-        $snapshot = $this->createEmergency($identity->code, $responders, false, null, $geolocation, true);
+        $snapshot = $this->createEmergency($identity->code, $responders, true, null, $geolocation, true);
         $emergencyId = $this->emergencyId($snapshot);
 
         if ($emergencyId === null) {

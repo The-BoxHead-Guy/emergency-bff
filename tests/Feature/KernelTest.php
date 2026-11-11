@@ -109,7 +109,7 @@ final class KernelTest extends TestCase
         self::assertFalse($current->body()['active']);
     }
 
-    public function test_the_simulacrum_route_creates_an_inactive_emergency(): void
+    public function test_the_simulacrum_route_creates_an_active_emergency(): void
     {
         $kernel = $this->kernel();
         $token = $this->csrfToken($kernel);
@@ -120,7 +120,7 @@ final class KernelTest extends TestCase
         self::assertSame(200, $response->status());
         self::assertTrue($response->body()['simulated']);
         self::assertCount(1, $this->client->callsTo('POST', '/v2/emergency'));
-        self::assertFalse($this->client->callsTo('POST', '/v2/emergency')[0]['body']['is_active']);
+        self::assertTrue($this->client->callsTo('POST', '/v2/emergency')[0]['body']['is_active']);
         self::assertCount(1, $this->client->callsTo('POST', 'emergency/simulacrum'));
     }
 
@@ -295,7 +295,7 @@ final class KernelTest extends TestCase
         self::assertTrue($response->body()['simulated']);
 
         $created = $this->client->callsTo('POST', '/v2/emergency')[0]['body'];
-        self::assertFalse($created['is_active']);
+        self::assertTrue($created['is_active']);
         self::assertTrue($created['is_simulated']);
         self::assertSame(['latitude' => 4.711, 'longitude' => -74.0721], $created['geolocation']);
     }

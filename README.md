@@ -143,7 +143,8 @@ Activates the emergency and messages the emergency contacts.
 
 Sends the simulation messages to the emergency contacts. The response has the
 same shape as activation with `"simulated": true` and `"emergency_id": null`.
-It never creates an emergency.
+It pre-creates an active simulated emergency to obtain the id used as the
+template's `emergency_code`.
 
 ### `POST /{id}/refresh`
 

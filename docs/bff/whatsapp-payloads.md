@@ -54,8 +54,8 @@ suffix, so the emergency must exist before the message is sent.
 }
 ```
 
-The simulation pre-creates an inactive emergency only to obtain a valid
-`emergency_code` for its `/test` link. It stays inactive and the BFF does not
+The simulation pre-creates an active simulated emergency only to obtain a valid
+`emergency_code` for its `/test` link. It stays active and the BFF does not
 update it.
 
 ## Typed response
