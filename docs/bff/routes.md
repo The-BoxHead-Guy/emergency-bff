@@ -8,16 +8,18 @@ All routes are relative to `EMERGENCY_BFF_ROUTE_PREFIX`, default
 
 ## Route table
 
-| Method   | Path            | Auth           | Success | Purpose                                                                    |
-| -------- | --------------- | -------------- | ------- | -------------------------------------------------------------------------- |
-| `GET`    | `/health`       | None           | `200`   | Liveness probe.                                                            |
-| `GET`    | `/config`       | None           | `200`   | Route prefix and CSRF token.                                               |
-| `POST`   | `/session`      | CSRF           | `201`   | Validate the code and start the session.                                   |
-| `GET`    | `/current`      | Session        | `200`   | Resume an active emergency for the session code.                           |
-| `POST`   | `/activate`     | Session + CSRF | `201`   | Send WhatsApp alerts and create the emergency.                             |
-| `POST`   | `/simulacrum`   | Session + CSRF | `200`   | Send the simulation template via a pre-created active simulated emergency. |
-| `POST`   | `/{id}/refresh` | Session + CSRF | `200`   | Read the current upstream emergency state.                                 |
-| `DELETE` | `/{id}`         | Session + CSRF | `200`   | Send the abort template and close the emergency.                           |
+| Method   | Path               | Auth           | Success | Purpose                                                                    |
+| -------- | ------------------ | -------------- | ------- | -------------------------------------------------------------------------- |
+| `GET`    | `/health`          | None           | `200`   | Liveness probe.                                                            |
+| `GET`    | `/config`          | None           | `200`   | Route prefix and CSRF token.                                               |
+| `POST`   | `/session`         | CSRF           | `201`   | Validate the code and start the session.                                   |
+| `GET`    | `/current`         | Session        | `200`   | Resume an active emergency for the session code.                           |
+| `GET`    | `/credits`         | Session        | `200`   | Credit balance for the session code.                                       |
+| `GET`    | `/credits/history` | Session        | `200`   | Paginated credit ledger, newest first.                                     |
+| `POST`   | `/activate`        | Session + CSRF | `201`   | Send WhatsApp alerts and create the emergency.                             |
+| `POST`   | `/simulacrum`      | Session + CSRF | `200`   | Send the simulation template via a pre-created active simulated emergency. |
+| `POST`   | `/{id}/refresh`    | Session + CSRF | `200`   | Read the current upstream emergency state.                                 |
+| `DELETE` | `/{id}`            | Session + CSRF | `200`   | Send the abort template and close the emergency.                           |
 
 Unknown paths return `404 not_found`. Known paths with the wrong method return
 `405 method_not_allowed` and an `allowed` array in `details`.
@@ -30,7 +32,8 @@ Unknown paths return `404 not_found`. Known paths with the wrong method return
 4. CSRF validation for unsafe methods.
 
 `GET /health` and `GET /config` do not require an identity but still pass
-through the pipeline.
+through the pipeline. CSRF applies only to unsafe methods: `GET /credits` and
+`GET /credits/history` need a session but no CSRF token.
 
 ## `GET /health`
 
@@ -100,6 +103,11 @@ regenerated and the CSRF token is rotated.
 
 When no emergency exists upstream for the code, `active` is `false` and
 `emergency` is `null`. The BFF clears the session snapshot in that case.
+
+## `GET /credits` and `GET /credits/history`
+
+Session-scoped reads with no CSRF requirement. Payloads, pagination bounds and
+error codes are defined in the [API contract](../api-contract.md#credits).
 
 ## `POST /activate`
 
@@ -180,8 +188,8 @@ that case in the UI.
 
 ## `DELETE /{id}`
 
-Sends the abort template to the responders, deletes the upstream emergency and
-clears the session snapshot:
+Sends the abort template (unbilled) to the responders, deletes the
+upstream emergency and clears the session snapshot:
 
 ```json
 {
@@ -223,6 +231,7 @@ Every error uses the same shape:
 | 404  | `inactive_code`              | Code is well formed but not active upstream.       |
 | 404  | `emergency_not_found`        | No emergency with that ID.                         |
 | 405  | `method_not_allowed`         | Wrong method; see `details.allowed`.               |
+| 402  | `insufficient_credits`       | The account cannot pay for a typed WhatsApp send.  |
 | 409  | `emergency_already_active`   | The code already has an active emergency.          |
 | 422  | `validation_failed`          | Missing or malformed input.                        |
 | 422  | `invalid_code`               | Code does not match the 6-character format.        |

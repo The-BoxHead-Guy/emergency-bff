@@ -9,6 +9,17 @@ use DataEmergencia\EmergencyBff\WhatsApp\MessageResult;
 
 final class MessageResultTest extends TestCase
 {
+    public function test_it_marks_an_insufficient_credits_failure(): void
+    {
+        $result = MessageResult::insufficientCredits('No credits.', ['code' => 'DABC12']);
+
+        self::assertFalse($result->success);
+        self::assertTrue($result->insufficientCredits);
+        self::assertSame(402, $result->status);
+        self::assertSame('insufficient_credits', $result->error['code'] ?? null);
+        self::assertSame(['code' => 'DABC12'], $result->error['details'] ?? null);
+    }
+
     public function test_it_reads_the_wamid_from_the_real_send_envelope(): void
     {
         $body = $this->fixture('responses/send-success.json');

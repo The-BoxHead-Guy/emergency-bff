@@ -2,26 +2,27 @@
 
 Applies to: maintainers and integrators diagnosing message content.
 
-The BFF sends only the recipient phone and the endpoint-specific `variables`.
-The upstream API owns the Meta template name, language, header image, date
-formatting, QR links and map data.
+The BFF sends the recipient phone, the root `emergency_id` and the
+endpoint-specific `variables`. The upstream API owns the Meta template name,
+language, header image, date formatting, QR links and map data.
 
 ## Endpoints
 
-| Scenario   | Endpoint                                           | Variables                                          |
-| ---------- | -------------------------------------------------- | -------------------------------------------------- |
-| Emergency  | `POST /v2/whatsapp/templates/emergency/activation` | `user_name`, `emergency_code`                      |
-| Simulation | `POST /v2/whatsapp/templates/emergency/simulacrum` | `contact_name`, `user_name`, `emergency_code`      |
-| Abort      | `POST /v2/whatsapp/templates/send`                 | Legacy payload with `emergency_status_aborting_v1` |
+| Scenario   | Endpoint                                           | Variables                                         |
+| ---------- | -------------------------------------------------- | ------------------------------------------------- |
+| Emergency  | `POST /v2/whatsapp/templates/emergency/activation` | `user_name`, `emergency_code`                     |
+| Simulation | `POST /v2/whatsapp/templates/emergency/simulacrum` | `contact_name`, `user_name`, `emergency_code`     |
+| Abort      | `POST /v2/whatsapp/templates/send`                 | Abort payload with `emergency_status_aborting_v1` |
 
 Activation and simulacrum no longer send a template name, language, components
-or `google_maps`. Abort keeps the legacy payload because no typed abort endpoint
+or `google_maps`. Abort uses the generic payload because no typed abort endpoint
 exists.
 
 ## Emergency request
 
 ```json
 {
+  "emergency_id": "EMG123456",
   "recipients": [
     {
       "phone": "573001234567",
@@ -34,13 +35,16 @@ exists.
 }
 ```
 
-`emergency_code` is the upstream emergency id. The API uses it as the URL button
-suffix, so the emergency must exist before the message is sent.
+`emergency_code` is the upstream emergency id used as the URL button suffix, so
+the emergency must exist before the message is sent. The root `emergency_id`
+tells the API which emergency to load; the API charges the `initiator_id` from
+that record. The template never carries a CAA.
 
 ## Simulation request
 
 ```json
 {
+  "emergency_id": "EMG123456",
   "recipients": [
     {
       "phone": "573001234567",

@@ -36,16 +36,18 @@ returns `401` before CSRF is checked. CSRF applies to `POST`, `PUT`, `PATCH` and
 
 ## Endpoints
 
-| Method   | Path            | Auth           | Purpose                                 |
-| -------- | --------------- | -------------- | --------------------------------------- |
-| `GET`    | `/health`       | none           | Liveness and service name.              |
-| `GET`    | `/config`       | none           | Route prefix and CSRF token.            |
-| `POST`   | `/session`      | none           | Validate a code and create the session. |
-| `GET`    | `/current`      | session        | Active emergency for this identity.     |
-| `POST`   | `/activate`     | session + CSRF | Create a real emergency.                |
-| `POST`   | `/simulacrum`   | session + CSRF | Send a test message.                    |
-| `POST`   | `/{id}/refresh` | session + CSRF | Re-read an emergency.                   |
-| `DELETE` | `/{id}`         | session + CSRF | Abort an emergency.                     |
+| Method   | Path               | Auth           | Purpose                                 |
+| -------- | ------------------ | -------------- | --------------------------------------- |
+| `GET`    | `/health`          | none           | Liveness and service name.              |
+| `GET`    | `/config`          | none           | Route prefix and CSRF token.            |
+| `POST`   | `/session`         | none           | Validate a code and create the session. |
+| `GET`    | `/current`         | session        | Active emergency for this identity.     |
+| `GET`    | `/credits`         | session        | Credit balance for this identity.       |
+| `GET`    | `/credits/history` | session        | Paginated credit ledger.                |
+| `POST`   | `/activate`        | session + CSRF | Create a real emergency.                |
+| `POST`   | `/simulacrum`      | session + CSRF | Send a test message.                    |
+| `POST`   | `/{id}/refresh`    | session + CSRF | Re-read an emergency.                   |
+| `DELETE` | `/{id}`            | session + CSRF | Abort an emergency.                     |
 
 `{id}` is the upstream emergency identifier returned by activation or
 `GET /current`.
@@ -151,6 +153,84 @@ reconciliation source when realtime is unavailable.
 `reporter_phone` is `null` when no reporter phone was supplied for that
 emergency.
 
+## Credits
+
+```http
+GET /credits
+```
+
+```json
+{
+  "credit": {
+    "code": "DABC12",
+    "domain": "emergency",
+    "balance": 9,
+    "contacts_count": 1,
+    "rounds": 9,
+    "extra_alerts": 0,
+    "rounds_label": "9 rounds"
+  }
+}
+```
+
+The values come from the upstream credits endpoint. The BFF copies `balance`,
+`contacts_count`, `rounds`, `extra_alerts` and `rounds_label`; it never
+recomputes them.
+
+`404 inactive_code` means the session code no longer exists upstream.
+`502 upstream_error` means the upstream read failed.
+
+## Credit history
+
+```http
+GET /credits/history?per_page=5&page=1
+```
+
+```json
+{
+  "items": [
+    {
+      "id": 3,
+      "type": "refund",
+      "amount": 1,
+      "balance_after": 10,
+      "contacts_count": 1,
+      "rounds": 10,
+      "extra_alerts": 0,
+      "emergency_id": 501,
+      "reference": "refund:EMG000501",
+      "created_at": "2026-11-16T09:30:00+00:00"
+    }
+  ],
+  "pagination": {
+    "total": 3,
+    "per_page": 5,
+    "current_page": 1,
+    "last_page": 1
+  }
+}
+```
+
+- `items` is newest first.
+- `type` is the ledger entry kind (`recharge`, `emergency`, `refund`, …).
+- `amount` is signed; `balance_after`, `contacts_count`, `rounds` and
+  `extra_alerts` are the balances after the entry.
+- `emergency_id` and `reference` are `null` when the entry is not tied to an
+  emergency.
+- `pagination` always contains `total`, `per_page`, `current_page` and
+  `last_page`.
+
+Pagination rules:
+
+| Name       | Type | Default | Bounds   |
+| ---------- | ---- | ------- | -------- |
+| `per_page` | int  | `15`    | `1..100` |
+| `page`     | int  | `1`     | `>= 1`   |
+
+Absent or empty values use the default. A non-integer or out-of-range value
+returns `422 validation_failed` with `details.field` naming the parameter,
+before any upstream call.
+
 ## Activate
 
 ```http
@@ -224,6 +304,11 @@ Behavior:
 6. Otherwise write the responder WAMIDs and statuses back through
    `PUT /v2/emergency/{id}` and return the result.
 
+If a typed send is rejected with `402 INSUFFICIENT_CREDITS`, the BFF marks that
+responder failed, stops the fan-out, deletes the emergency it created and
+returns `402 insufficient_credits` without a `PUT` write-back. Non-credit
+delivery failures keep the `502 whatsapp_delivery_failed` path.
+
 Partial failures keep the emergency and appear in `failures`.
 
 A `2xx` send response without a valid `wamid.`-prefixed id counts as a failure
@@ -233,13 +318,14 @@ the real HTTP status in `failures[].status`.
 
 Errors:
 
-| Status | Code                         | Cause                         |
-| ------ | ---------------------------- | ----------------------------- |
-| 409    | `emergency_already_active`   | An active emergency exists.   |
-| 422    | `missing_medical_profile`    | Profile has no personal data. |
-| 422    | `missing_emergency_contacts` | Profile has no contacts.      |
-| 502    | `whatsapp_delivery_failed`   | Every contact failed.         |
-| 502    | `upstream_error`             | Upstream API failure.         |
+| Status | Code                         | Cause                                |
+| ------ | ---------------------------- | ------------------------------------ |
+| 409    | `emergency_already_active`   | An active emergency exists.          |
+| 402    | `insufficient_credits`       | The account cannot pay for the send. |
+| 422    | `missing_medical_profile`    | Profile has no personal data.        |
+| 422    | `missing_emergency_contacts` | Profile has no contacts.             |
+| 502    | `whatsapp_delivery_failed`   | Every contact failed.                |
+| 502    | `upstream_error`             | Upstream API failure.                |
 
 Retry with the same `Idempotency-Key` returns the stored result instead of
 creating a second emergency. The key comes from the `Idempotency-Key` header or
@@ -285,7 +371,8 @@ emergency. The BFF itself does not persist locations.
 Simulation never checks for an existing active emergency. It pre-creates an
 active simulated emergency only to obtain a valid `emergency_code`, leaves it
 active and does not update it. A total delivery failure deletes that record and
-returns `502 whatsapp_delivery_failed`.
+returns `502 whatsapp_delivery_failed`. A `402 insufficient_credits` response
+also deletes the record and returns the payment error.
 
 ## Refresh
 
@@ -351,7 +438,8 @@ X-CSRF-Token: …
 ```
 
 The BFF sends the abort template to the contacts, then deletes the upstream
-emergency. The response includes the delivery result. `deleted: true` means the
+emergency. Abort uses the unbilled `/v2/whatsapp/templates/send` endpoint, so a
+`402` there is a normal delivery failure and never blocks the delete. The response includes the delivery result. `deleted: true` means the
 upstream delete succeeded; a WhatsApp failure is reported in `failures` but does
 not roll back the deletion.
 
@@ -411,6 +499,7 @@ response header.
 | 404  | `not_found`                  | Unknown route.                                                 |
 | 404  | `inactive_code`              | Code not found upstream.                                       |
 | 404  | `emergency_not_found`        | Emergency does not exist upstream.                             |
+| 402  | `insufficient_credits`       | The account cannot pay for a typed WhatsApp send.              |
 | 405  | `method_not_allowed`         | Wrong method; `details.allowed` lists methods.                 |
 | 409  | `emergency_already_active`   | Active emergency exists.                                       |
 | 422  | `validation_failed`          | Body validation failed.                                        |
@@ -498,6 +587,8 @@ sequenceDiagram
 | Update emergency | `PUT /v2/emergency/{id}`                                   |
 | Read emergency   | `GET /v2/emergency/{id}`                                   |
 | Find active      | `GET /v2/emergency/qr/{code}/active`                       |
+| Read credits     | `GET /v2/credits/{code}`                                   |
+| Read ledger      | `GET /v2/credits/{code}/history`                           |
 | Delete emergency | `DELETE /v2/emergency/{id}`                                |
 | Send activation  | `POST /v2/whatsapp/templates/emergency/activation`         |
 | Send simulacrum  | `POST /v2/whatsapp/templates/emergency/simulacrum`         |

@@ -1,0 +1,66 @@
+{
+  "meta": {
+    "timestamp": "2026-11-16T14:25:28+00:00",
+    "api_version": "2.0.0",
+    "status": 200
+  },
+  "data": {
+    "type": "credit_history",
+    "items": [
+      {
+        "type": "credit_history_entry",
+        "id": "3",
+        "attributes": {
+          "id": 3,
+          "type": "refund",
+          "amount": 1,
+          "balance_after": 10,
+          "contacts_count": 1,
+          "rounds": 10,
+          "extra_alerts": 0,
+          "emergency_id": 501,
+          "reference": "refund:EMG000501",
+          "created_at": "2026-11-16T09:30:00+00:00"
+        }
+      },
+      {
+        "type": "credit_history_entry",
+        "id": "2",
+        "attributes": {
+          "id": 2,
+          "type": "emergency",
+          "amount": -1,
+          "balance_after": 9,
+          "contacts_count": 1,
+          "rounds": 9,
+          "extra_alerts": 0,
+          "emergency_id": 500,
+          "reference": "EMG000500",
+          "created_at": "2026-11-15T14:25:00+00:00"
+        }
+      },
+      {
+        "type": "credit_history_entry",
+        "id": "1",
+        "attributes": {
+          "id": 1,
+          "type": "recharge",
+          "amount": 10,
+          "balance_after": 10,
+          "contacts_count": 1,
+          "rounds": 10,
+          "extra_alerts": 0,
+          "emergency_id": null,
+          "reference": "recharge:DEMO-001",
+          "created_at": "2026-11-10T08:00:00+00:00"
+        }
+      }
+    ],
+    "pagination": {
+      "total": 3,
+      "per_page": 15,
+      "current_page": 1,
+      "last_page": 1
+    }
+  }
+}

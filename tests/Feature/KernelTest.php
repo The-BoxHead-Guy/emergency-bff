@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace DataEmergencia\EmergencyBff\Tests\Feature;
 
+use DataEmergencia\EmergencyBff\Api\CreditRepository;
 use DataEmergencia\EmergencyBff\Api\EmergencyRepository;
 use DataEmergencia\EmergencyBff\Api\ProfileRepository;
 use DataEmergencia\EmergencyBff\Api\WhatsAppClient;
@@ -437,6 +438,178 @@ final class KernelTest extends TestCase
     /**
      * @return array<string, array{string|int, string}>
      */
+    public function test_the_credit_routes_require_a_session(): void
+    {
+        $kernel = $this->kernel();
+
+        foreach (['/credits', '/credits/history'] as $path) {
+            $response = $kernel->handle(new Request('GET', '/de-bff/emergency'.$path));
+            self::assertSame(401, $response->status(), $path);
+            self::assertSame('unauthenticated', $response->body()['error']['code']);
+        }
+    }
+
+    public function test_it_returns_the_credit_summary_for_the_session_code(): void
+    {
+        $kernel = $this->kernel();
+        $token = $this->csrfToken($kernel);
+        $session = $kernel->handle($this->json('POST', '/de-bff/emergency/session', ['code' => 'DABC12'], $token));
+
+        $response = $kernel->handle(new Request('GET', '/de-bff/emergency/credits'));
+
+        self::assertSame(200, $response->status());
+        self::assertSame('DABC12', $response->body()['credit']['code']);
+        self::assertSame(9, $response->body()['credit']['balance']);
+        self::assertSame(9, $response->body()['credit']['rounds']);
+        self::assertSame('9 rounds', $response->body()['credit']['rounds_label']);
+        self::assertCount(1, $this->client->callsTo('GET', '/v2/credits/DABC12'));
+        self::assertNotEmpty($session->body()['csrf_token']);
+    }
+
+    public function test_it_forwards_the_history_pagination(): void
+    {
+        $kernel = $this->kernel();
+        $token = $this->csrfToken($kernel);
+        $kernel->handle($this->json('POST', '/de-bff/emergency/session', ['code' => 'DABC12'], $token));
+
+        $response = $kernel->handle(new Request(
+            'GET',
+            '/de-bff/emergency/credits/history',
+            [],
+            ['per_page' => '5', 'page' => '2'],
+        ));
+
+        self::assertSame(200, $response->status());
+        self::assertArrayHasKey('items', $response->body());
+        self::assertSame(3, $response->body()['pagination']['total']);
+        self::assertSame('/v2/credits/DABC12/history?per_page=5&page=2', $this->client->callsTo('GET', '/v2/credits/DABC12/history')[0]['path']);
+    }
+
+    #[DataProvider('invalidPaginationProvider')]
+    public function test_it_rejects_invalid_history_pagination_before_the_upstream_call(array $query, string $field): void
+    {
+        $kernel = $this->kernel();
+        $token = $this->csrfToken($kernel);
+        $kernel->handle($this->json('POST', '/de-bff/emergency/session', ['code' => 'DABC12'], $token));
+
+        $response = $kernel->handle(new Request('GET', '/de-bff/emergency/credits/history', [], $query));
+
+        self::assertSame(422, $response->status());
+        self::assertSame('validation_failed', $response->body()['error']['code']);
+        self::assertSame($field, $response->body()['error']['details']['field']);
+        self::assertSame([], $this->client->callsTo('GET', '/v2/credits/'));
+    }
+
+    public function test_it_maps_a_missing_credit_code_to_inactive_code(): void
+    {
+        $client = new FakeApiClient(function (string $method, string $path): ApiResponse {
+            if ($method === 'GET' && str_ends_with($path, '/exists')) {
+                return new ApiResponse(200, ['data' => ['attributes' => ['exists' => true]]]);
+            }
+
+            if ($method === 'GET' && str_contains($path, '/v2/credits/')) {
+                throw ApiException::fromResponse(new ApiResponse(404));
+            }
+
+            throw new \RuntimeException('Unexpected request: '.$method.' '.$path);
+        });
+
+        $kernel = $this->kernel($client);
+        $token = $this->csrfToken($kernel);
+        $kernel->handle($this->json('POST', '/de-bff/emergency/session', ['code' => 'DABC12'], $token));
+
+        $response = $kernel->handle(new Request('GET', '/de-bff/emergency/credits'));
+
+        self::assertSame(404, $response->status());
+        self::assertSame('inactive_code', $response->body()['error']['code']);
+    }
+
+    public function test_it_maps_a_credit_upstream_failure_to_502(): void
+    {
+        $client = new FakeApiClient(function (string $method, string $path): ApiResponse {
+            if ($method === 'GET' && str_ends_with($path, '/exists')) {
+                return new ApiResponse(200, ['data' => ['attributes' => ['exists' => true]]]);
+            }
+
+            if ($method === 'GET' && str_contains($path, '/v2/credits/')) {
+                throw ApiException::fromResponse(new ApiResponse(503, ['message' => 'Unavailable']));
+            }
+
+            throw new \RuntimeException('Unexpected request: '.$method.' '.$path);
+        });
+
+        $kernel = $this->kernel($client);
+        $token = $this->csrfToken($kernel);
+        $kernel->handle($this->json('POST', '/de-bff/emergency/session', ['code' => 'DABC12'], $token));
+
+        $response = $kernel->handle(new Request('GET', '/de-bff/emergency/credits'));
+
+        self::assertSame(502, $response->status());
+        self::assertSame('upstream_error', $response->body()['error']['code']);
+        self::assertSame(503, $response->body()['error']['details']['status']);
+    }
+
+    public function test_activation_with_insufficient_credits_returns_402_and_cleans_up(): void
+    {
+        $client = new FakeApiClient(function (string $method, string $path): ApiResponse {
+            if ($method === 'GET' && str_ends_with($path, '/exists')) {
+                return new ApiResponse(200, ['data' => ['attributes' => ['exists' => true]]]);
+            }
+
+            if ($method === 'GET' && str_contains($path, 'models/data')) {
+                return new ApiResponse(200, $this->fixture('responses/success.json'));
+            }
+
+            if ($method === 'GET' && str_contains($path, '/active')) {
+                throw ApiException::fromResponse(new ApiResponse(404));
+            }
+
+            if ($method === 'POST' && $path === '/v2/emergency') {
+                return new ApiResponse(201, [
+                    'data' => ['attributes' => ['emergency_id' => 'EMG1', 'is_active' => true]],
+                ]);
+            }
+
+            if ($method === 'POST' && str_contains($path, 'whatsapp/templates/emergency/activation')) {
+                throw ApiException::fromResponse(
+                    new ApiResponse(402, $this->fixture('responses/insufficient-credits.json')),
+                );
+            }
+
+            if ($method === 'DELETE' && str_starts_with($path, '/v2/emergency/')) {
+                return new ApiResponse(204);
+            }
+
+            throw new \RuntimeException('Unexpected request: '.$method.' '.$path);
+        });
+
+        $kernel = $this->kernel($client);
+        $token = $this->csrfToken($kernel);
+        $session = $kernel->handle($this->json('POST', '/de-bff/emergency/session', ['code' => 'DABC12'], $token));
+
+        $response = $kernel->handle($this->json('POST', '/de-bff/emergency/activate', [], $session->body()['csrf_token']));
+
+        self::assertSame(402, $response->status());
+        self::assertSame('insufficient_credits', $response->body()['error']['code']);
+        self::assertSame('INSUFFICIENT_CREDITS', $response->body()['error']['details']['upstream_code']);
+        self::assertCount(1, $this->client->callsTo('POST', '/v2/emergency'));
+        self::assertCount(1, $this->client->callsTo('DELETE', '/v2/emergency/EMG1'));
+        self::assertCount(0, $this->client->callsTo('PUT', '/v2/emergency/'));
+    }
+
+    /**
+     * @return array<string, array{array<string, string>, string}>
+     */
+    public static function invalidPaginationProvider(): array
+    {
+        return [
+            'zero per_page' => [['per_page' => '0'], 'per_page'],
+            'too large per_page' => [['per_page' => '101'], 'per_page'],
+            'non integer per_page' => [['per_page' => 'abc'], 'per_page'],
+            'zero page' => [['page' => '0'], 'page'],
+        ];
+    }
+
     public static function emergencyIdProvider(): array
     {
         return [
@@ -502,6 +675,14 @@ final class KernelTest extends TestCase
                 return str_contains($path, 'DABC12') || str_contains($path, 'A12345')
                     ? new ApiResponse(200, ['data' => ['attributes' => ['exists' => true]]])
                     : throw ApiException::fromResponse(new ApiResponse(404));
+            }
+
+            if ($method === 'GET' && str_contains($path, '/credits/') && str_contains($path, '/history')) {
+                return new ApiResponse(200, $this->fixture('responses/credit-history.json'));
+            }
+
+            if ($method === 'GET' && preg_match('#/v2/credits/[^/]+$#', $path) === 1) {
+                return new ApiResponse(200, $this->fixture('responses/credits.json'));
             }
 
             if ($method === 'GET' && str_contains($path, 'models/data')) {
@@ -599,6 +780,7 @@ final class KernelTest extends TestCase
             session: $session,
             validator: new CodeValidator($client),
             emergency: $service,
+            credits: new CreditRepository($client),
             limiter: $limiter,
         );
     }

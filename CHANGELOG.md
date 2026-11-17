@@ -6,6 +6,27 @@ and [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-17
+
+### Added
+
+- `GET /credits` and `GET /credits/history` proxy the upstream credit summary
+  and append-only ledger for the session code, with bounded `per_page`/`page`
+  pagination and `422 validation_failed` for invalid values.
+- `CreditRepository` normalizes the upstream JSON:API credit envelopes and maps
+  a credits `404` to `inactive_code`.
+- The vanilla demo and mock API cover both credit routes and the zero-credit
+  `ZERO12` code.
+
+### Changed
+
+- A `402 INSUFFICIENT_CREDITS` from the typed activation or simulacrum send now
+  returns `402 insufficient_credits` (after cleaning up the created emergency)
+  instead of `502 whatsapp_delivery_failed`. The unbilled abort template is
+  unchanged.
+- `Kernel` gained a required `CreditRepository` collaborator; `Bootstrap` wires
+  it automatically for hosts that do not build the kernel by hand.
+
 ## [0.4.1] - 2026-11-11
 
 ### Changed

@@ -12,6 +12,7 @@ use DataEmergencia\EmergencyBff\Emergency\Exception\AlreadyActiveEmergencyExcept
 use DataEmergencia\EmergencyBff\Emergency\Exception\ApiFailureException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\EmergencyNotFoundException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\ForbiddenEmergencyException;
+use DataEmergencia\EmergencyBff\Emergency\Exception\InsufficientCreditsException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\MissingContactsException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\MissingProfileException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\WhatsAppFailureException;
@@ -34,8 +35,7 @@ final class EmergencyService
         private readonly EmergencyRepository $emergencies,
         private readonly ?LoggerInterface $logger = null,
         private readonly ?IdempotencyStore $idempotency = null,
-    ) {
-    }
+    ) {}
 
     public function activate(
         Identity $identity,
@@ -59,11 +59,11 @@ final class EmergencyService
 
         $profile = $this->profiles->fetch($identity->code);
 
-        if (!$profile->hasPersonalInfo()) {
+        if (! $profile->hasPersonalInfo()) {
             throw new MissingProfileException($identity->code);
         }
 
-        if (!$profile->hasContacts()) {
+        if (! $profile->hasContacts()) {
             throw new MissingContactsException($identity->code);
         }
 
@@ -76,7 +76,9 @@ final class EmergencyService
             throw new ApiFailureException('creating the emergency', 500);
         }
 
-        [$responders, $failures] = $this->sendToResponders(
+        [$responders, $failures] = $this->sendBilledToResponders(
+            $identity->code,
+            $emergencyId,
             $profile,
             $responders,
             fn (array $contact, array $personalInfo): MessageResult => $this->whatsApp->sendActivation(
@@ -85,6 +87,7 @@ final class EmergencyService
                     (string) ($personalInfo['full_name'] ?? ''),
                     $emergencyId,
                 ),
+                $emergencyId,
             ),
         );
 
@@ -138,11 +141,11 @@ final class EmergencyService
 
         $profile = $this->profiles->fetch($identity->code);
 
-        if (!$profile->hasPersonalInfo()) {
+        if (! $profile->hasPersonalInfo()) {
             throw new MissingProfileException($identity->code);
         }
 
-        if (!$profile->hasContacts()) {
+        if (! $profile->hasContacts()) {
             throw new MissingContactsException($identity->code);
         }
 
@@ -155,7 +158,9 @@ final class EmergencyService
             throw new ApiFailureException('creating the emergency', 500);
         }
 
-        [$responders, $failures] = $this->sendToResponders(
+        [$responders, $failures] = $this->sendBilledToResponders(
+            $identity->code,
+            $emergencyId,
             $profile,
             $responders,
             fn (array $contact, array $personalInfo): MessageResult => $this->whatsApp->sendSimulacrum(
@@ -165,6 +170,7 @@ final class EmergencyService
                     (string) ($personalInfo['full_name'] ?? ''),
                     $emergencyId,
                 ),
+                $emergencyId,
             ),
         );
 
@@ -206,11 +212,13 @@ final class EmergencyService
         $responders = $this->responders->createFromContacts($profile->emergencyContacts);
 
         [$responders, $failures] = $this->sendToResponders(
+            $identity->code,
             $profile,
             $responders,
             fn (array $contact, array $personalInfo): MessageResult => $this->whatsApp->send(
                 $this->payloads->buildAbortPayload($contact, $personalInfo),
             ),
+            billed: false,
         );
 
         $this->emergencies->delete($emergencyId);
@@ -247,11 +255,11 @@ final class EmergencyService
     }
 
     /**
-     * @param array<int, Responder> $responders
-     * @param callable(array<string, mixed>, array<string, mixed>): MessageResult $sender
+     * @param  array<int, Responder>  $responders
+     * @param  callable(array<string, mixed>, array<string, mixed>): MessageResult  $sender
      * @return array{0: array<int, Responder>, 1: array<int, array<string, mixed>>}
      */
-    private function sendToResponders(Profile $profile, array $responders, callable $sender): array
+    private function sendToResponders(string $code, Profile $profile, array $responders, callable $sender, bool $billed = true): array
     {
         $failures = [];
         $contacts = $profile->emergencyContacts;
@@ -259,7 +267,7 @@ final class EmergencyService
         foreach ($responders as $index => $responder) {
             $contact = $contacts[$index] ?? [];
 
-            if (!$this->hasUsableContact($contact, $responder)) {
+            if (! $this->hasUsableContact($contact, $responder)) {
                 $failures[] = $this->recordFailure(
                     $responder,
                     'El contacto de emergencia no tiene un número de teléfono utilizable.',
@@ -270,12 +278,19 @@ final class EmergencyService
 
             $result = $sender($contact, $profile->personalInfo);
 
-            if (!$result->success) {
+            if (! $result->success) {
                 $failures[] = $this->recordFailure(
                     $responder,
                     $result->error['message'] ?? 'No se pudo enviar el mensaje de WhatsApp.',
                     $result->status,
                 );
+
+                if ($billed && $result->insufficientCredits) {
+                    throw new InsufficientCreditsException(
+                        $code,
+                        is_string($result->error['message'] ?? null) ? $result->error['message'] : null,
+                    );
+                }
 
                 continue;
             }
@@ -305,11 +320,51 @@ final class EmergencyService
     }
 
     /**
-     * @param array<string, mixed> $contact
+     * Sends billed messages and deletes the emergency when credits run out.
+     *
+     * @param  array<int, Responder>  $responders
+     * @param  callable(array<string, mixed>, array<string, mixed>): MessageResult  $sender
+     * @return array{0: array<int, Responder>, 1: array<int, array<string, mixed>>}
+     */
+    private function sendBilledToResponders(
+        string $code,
+        string $emergencyId,
+        Profile $profile,
+        array $responders,
+        callable $sender,
+    ): array {
+        try {
+            return $this->sendToResponders($code, $profile, $responders, $sender, true);
+        } catch (InsufficientCreditsException $exception) {
+            $this->deleteAfterFailure($emergencyId, $code);
+
+            throw $exception;
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $contact
      */
     private function hasUsableContact(array $contact, Responder $responder): bool
     {
         return $contact !== [] && $responder->phone !== '';
+    }
+
+    /**
+     * Deletes an emergency created before a failed send and logs cleanup errors.
+     */
+    private function deleteAfterFailure(string $emergencyId, string $code): void
+    {
+        try {
+            $this->emergencies->delete($emergencyId);
+        } catch (\Throwable $exception) {
+            $this->logger?->warning('emergency.cleanup_failed', [
+                'code' => $code,
+                'emergency_id' => $emergencyId,
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -333,8 +388,8 @@ final class EmergencyService
     }
 
     /**
-     * @param array<int, Responder> $responders
-     * @param array<string, mixed>|null $geolocation
+     * @param  array<int, Responder>  $responders
+     * @param  array<string, mixed>|null  $geolocation
      * @return array<string, mixed>
      */
     private function createEmergency(
@@ -364,7 +419,7 @@ final class EmergencyService
     }
 
     /**
-     * @param array<int, Responder> $responders
+     * @param  array<int, Responder>  $responders
      * @return array<int, array<string, mixed>>
      */
     private function responderPayloads(array $responders): array
@@ -373,7 +428,7 @@ final class EmergencyService
     }
 
     /**
-     * @param array<int, Responder> $responders
+     * @param  array<int, Responder>  $responders
      */
     private function allFailed(array $responders): bool
     {
@@ -382,7 +437,7 @@ final class EmergencyService
         }
 
         foreach ($responders as $responder) {
-            if (!$responder->failed) {
+            if (! $responder->failed) {
                 return false;
             }
         }
@@ -391,7 +446,7 @@ final class EmergencyService
     }
 
     /**
-     * @param array<string, mixed> $snapshot
+     * @param  array<string, mixed>  $snapshot
      */
     private function emergencyId(array $snapshot): ?string
     {

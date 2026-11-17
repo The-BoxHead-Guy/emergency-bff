@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace DataEmergencia\EmergencyBff\Api;
 
+use DataEmergencia\EmergencyBff\Emergency\Exception\InsufficientCreditsException;
 use DataEmergencia\EmergencyBff\Http\ApiClient;
 use DataEmergencia\EmergencyBff\Http\ApiException;
 use DataEmergencia\EmergencyBff\Http\ApiResponse;
@@ -18,9 +19,9 @@ final class WhatsAppClient
     public function __construct(private readonly ApiClient $client) {}
 
     /**
-     * Sends the legacy payload used by the abort template.
+     * Sends the abort template payload.
      *
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      */
     public function send(array $payload): MessageResult
     {
@@ -47,28 +48,29 @@ final class WhatsAppClient
     }
 
     /**
-     * @param array<string, mixed> $variables
+     * @param  array<string, mixed>  $variables
      */
-    public function sendActivation(string $phone, array $variables): MessageResult
+    public function sendActivation(string $phone, array $variables, string $emergencyId): MessageResult
     {
-        return $this->sendTyped(Endpoints::whatsappEmergencyActivation(), $phone, $variables);
+        return $this->sendTyped(Endpoints::whatsappEmergencyActivation(), $phone, $variables, $emergencyId);
     }
 
     /**
-     * @param array<string, mixed> $variables
+     * @param  array<string, mixed>  $variables
      */
-    public function sendSimulacrum(string $phone, array $variables): MessageResult
+    public function sendSimulacrum(string $phone, array $variables, string $emergencyId): MessageResult
     {
-        return $this->sendTyped(Endpoints::whatsappEmergencySimulacrum(), $phone, $variables);
+        return $this->sendTyped(Endpoints::whatsappEmergencySimulacrum(), $phone, $variables, $emergencyId);
     }
 
     /**
-     * @param array<string, mixed> $variables
+     * @param  array<string, mixed>  $variables
      */
-    private function sendTyped(string $path, string $phone, array $variables): MessageResult
+    private function sendTyped(string $path, string $phone, array $variables, string $emergencyId): MessageResult
     {
         try {
             $response = $this->client->post($path, [
+                'emergency_id' => $emergencyId,
                 'recipients' => [
                     [
                         'phone' => $phone,
@@ -77,6 +79,10 @@ final class WhatsAppClient
                 ],
             ]);
         } catch (ApiException $exception) {
+            if ($exception->status() === InsufficientCreditsException::STATUS) {
+                return MessageResult::insufficientCredits($exception->getMessage(), $exception->details());
+            }
+
             return MessageResult::failed(
                 [
                     'message' => $exception->getMessage(),
@@ -95,7 +101,7 @@ final class WhatsAppClient
         $body = $response->body();
         $result = $body['data']['attributes']['data']['results'][0] ?? null;
 
-        if (!is_array($result)) {
+        if (! is_array($result)) {
             return MessageResult::failed([
                 'message' => 'The typed WhatsApp response did not include a recipient result.',
                 'details' => $response->body(),

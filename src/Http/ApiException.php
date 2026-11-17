@@ -29,8 +29,9 @@ final class ApiException extends RuntimeException
     public static function fromResponse(ApiResponse $response, string $operation = 'API request'): self
     {
         $body = $response->body();
-        $errorCode = (string) ($body['code'] ?? $body['error']['code'] ?? 'http_error');
-        $message = (string) ($body['message'] ?? $body['error']['message'] ?? sprintf('%s failed with status %d', $operation, $response->status()));
+        $firstError = is_array($body['errors'][0] ?? null) ? $body['errors'][0] : [];
+        $errorCode = (string) ($body['code'] ?? $body['error']['code'] ?? $firstError['code'] ?? 'http_error');
+        $message = (string) ($body['message'] ?? $body['error']['message'] ?? $firstError['detail'] ?? sprintf('%s failed with status %d', $operation, $response->status()));
         $details = $body['details'] ?? $body['errors'] ?? [];
 
         return new self(

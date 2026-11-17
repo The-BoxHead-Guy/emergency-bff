@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace DataEmergencia\EmergencyBff\WhatsApp;
 
+use DataEmergencia\EmergencyBff\Emergency\Exception\InsufficientCreditsException;
+
 /**
  * Result of a single WhatsApp template send.
  */
@@ -18,6 +20,7 @@ final class MessageResult
         public readonly ?array $data = null,
         public readonly int $status = 0,
         public readonly ?array $error = null,
+        public readonly bool $insufficientCredits = false,
     ) {
     }
 
@@ -35,6 +38,24 @@ final class MessageResult
     public static function failed(array $error, int $status = 0): self
     {
         return new self(false, null, $status, $error);
+    }
+
+    /**
+     * @param array<string, mixed> $details
+     */
+    public static function insufficientCredits(string $message, array $details = []): self
+    {
+        return new self(
+            false,
+            null,
+            InsufficientCreditsException::STATUS,
+            [
+                'message' => $message,
+                'code' => InsufficientCreditsException::CODE,
+                'details' => $details,
+            ],
+            true,
+        );
     }
 
     /**

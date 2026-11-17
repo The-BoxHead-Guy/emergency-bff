@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace DataEmergencia\EmergencyBff\Http;
 
+use DataEmergencia\EmergencyBff\Api\CreditRepository;
 use DataEmergencia\EmergencyBff\Config\Config;
 use DataEmergencia\EmergencyBff\Emergency\CodeValidator;
 use DataEmergencia\EmergencyBff\Emergency\EmergencyResult;
@@ -13,6 +14,7 @@ use DataEmergencia\EmergencyBff\Emergency\Exception\EmergencyException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\EmergencyNotFoundException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\ForbiddenEmergencyException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\InactiveCodeException;
+use DataEmergencia\EmergencyBff\Emergency\Exception\InsufficientCreditsException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\InvalidCodeException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\MissingContactsException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\MissingProfileException;
@@ -43,6 +45,7 @@ final class Kernel
         private readonly SessionManager $session,
         private readonly CodeValidator $validator,
         private readonly EmergencyService $emergency,
+        private readonly CreditRepository $credits,
         private readonly ?LoggerInterface $logger = null,
         ?RateLimiter $limiter = null,
     ) {
@@ -218,6 +221,20 @@ final class Kernel
                     $this->geolocation($request),
                 )));
             })
+            ->add('GET', '/credits', function (): Response {
+                $identity = $this->identity();
+
+                return Response::json([
+                    'credit' => $this->credits->summary($identity->code),
+                ]);
+            })
+            ->add('GET', '/credits/history', function (Request $request): Response {
+                $identity = $this->identity();
+                $perPage = $this->intQuery($request, 'per_page', 15, 1, 100);
+                $page = $this->intQuery($request, 'page', 1, 1);
+
+                return Response::json($this->credits->history($identity->code, $perPage, $page));
+            })
             ->add('POST', '/{id}/refresh', function (Request $request, array $params): Response {
                 $this->identity();
                 $snapshot = $this->emergency->refresh((string) $params['id']);
@@ -308,6 +325,42 @@ final class Kernel
         return $flat === [] ? null : $flat;
     }
 
+    /**
+     * Reads a bounded integer from the query string before any upstream call.
+     */
+    private function intQuery(Request $request, string $key, int $default, int $min, ?int $max = null): int
+    {
+        $value = $request->query()[$key] ?? null;
+
+        if ($value === null || $value === '') {
+            return $default;
+        }
+
+        $valid = is_int($value)
+            || (is_string($value) && preg_match('/^-?\d+$/', trim($value)) === 1);
+
+        if (!$valid) {
+            throw new HttpError(422, 'validation_failed', sprintf('The %s query parameter must be an integer.', $key), [
+                'field' => $key,
+            ]);
+        }
+
+        $integer = (int) $value;
+
+        if ($integer < $min || ($max !== null && $integer > $max)) {
+            throw new HttpError(
+                422,
+                'validation_failed',
+                $max === null
+                    ? sprintf('The %s query parameter must be at least %d.', $key, $min)
+                    : sprintf('The %s query parameter must be between %d and %d.', $key, $min, $max),
+                ['field' => $key],
+            );
+        }
+
+        return $integer;
+    }
+
     private function idempotencyKey(Request $request): ?string
     {
         $key = $request->header('idempotency-key') ?? $request->input('idempotency_key');
@@ -374,6 +427,7 @@ final class Kernel
             $exception instanceof MissingProfileException => [422, 'missing_medical_profile'],
             $exception instanceof InvalidCodeException => [422, 'invalid_code'],
             $exception instanceof InactiveCodeException => [404, 'inactive_code'],
+            $exception instanceof InsufficientCreditsException => [InsufficientCreditsException::STATUS, InsufficientCreditsException::CODE],
             $exception instanceof WhatsAppFailureException => [502, 'whatsapp_delivery_failed'],
             default => [500, 'emergency_error'],
         };

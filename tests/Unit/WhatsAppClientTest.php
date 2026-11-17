@@ -19,7 +19,7 @@ final class WhatsAppClientTest extends TestCase
         $result = $client->sendActivation('573001234567', [
             'user_name' => 'Ada Lovelace',
             'emergency_code' => 'EMG1',
-        ]);
+        ], 'EMG1');
 
         self::assertTrue($result->success);
         self::assertSame('wamid.1', $result->messageId());
@@ -27,6 +27,7 @@ final class WhatsAppClientTest extends TestCase
         $call = $api->callsTo('POST', 'emergency/activation')[0];
 
         self::assertSame('/v2/whatsapp/templates/emergency/activation', $call['path']);
+        self::assertSame('EMG1', $call['body']['emergency_id']);
         self::assertSame([
             [
                 'phone' => '573001234567',
@@ -47,13 +48,14 @@ final class WhatsAppClientTest extends TestCase
             'contact_name' => 'Grace Hopper',
             'user_name' => 'Ada Lovelace',
             'emergency_code' => 'EMG1',
-        ]);
+        ], 'EMG1');
 
         self::assertTrue($result->success);
 
         $call = $api->callsTo('POST', 'emergency/simulacrum')[0];
 
         self::assertSame('/v2/whatsapp/templates/emergency/simulacrum', $call['path']);
+        self::assertSame('EMG1', $call['body']['emergency_id']);
         self::assertSame([
             [
                 'phone' => '573001234567',
@@ -78,7 +80,7 @@ final class WhatsAppClientTest extends TestCase
         $result = $client->sendActivation('573001234567', [
             'user_name' => 'Ada Lovelace',
             'emergency_code' => 'EMG1',
-        ]);
+        ], 'EMG1');
 
         self::assertFalse($result->success);
         self::assertNull($result->messageId());
@@ -94,7 +96,7 @@ final class WhatsAppClientTest extends TestCase
         $result = $client->sendActivation('573001234567', [
             'user_name' => 'Ada Lovelace',
             'emergency_code' => 'EMG1',
-        ]);
+        ], 'EMG1');
 
         self::assertFalse($result->success);
         self::assertNull($result->messageId());

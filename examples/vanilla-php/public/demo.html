@@ -44,6 +44,8 @@
       <button data-action="activate">3. Activate</button>
       <button data-action="simulacrum">4. Simulacrum</button>
       <button data-action="abort">5. Abort</button>
+      <button data-action="credits">6. Credits</button>
+      <button data-action="credit-history">7. Credit history</button>
     </div>
 
     <h2>Log</h2>
@@ -112,6 +114,17 @@
               if (!emergencyId) throw new Error('Activate first');
               log('abort', await call('DELETE', `/${emergencyId}`));
               emergencyId = null;
+            }
+
+            if (button.dataset.action === 'credits') {
+              log('credits', await call('GET', '/credits'));
+            }
+
+            if (button.dataset.action === 'credit-history') {
+              log(
+                'credit history',
+                await call('GET', '/credits/history?per_page=5')
+              );
             }
           } catch (error) {
             log('error', String(error));

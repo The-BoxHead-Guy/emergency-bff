@@ -16,8 +16,11 @@ API on `:8081` and the BFF on `:8080`, runs the end-to-end smoke test, and keeps
 both servers running until you press Ctrl-C.
 
 Open <http://127.0.0.1:8080> and use the numbered buttons: **Start session** →
-**Activate** → **Current** → **Simulacrum** → **Abort**. The demo code `DABC12`
-is accepted; `ZZZZZZ` is inactive and `bad` is rejected as malformed.
+**Activate** → **Current** → **Simulacrum** → **Abort**, plus **6. Credits** and
+**7. Credit history** for the read-only credit endpoints. The demo code `DABC12`
+is accepted; `ZZZZZZ` is inactive and `bad` is rejected as malformed. The demo
+code `ZERO12` is accepted but has no credits, so its summary returns
+`balance: 0` and activation returns `402 insufficient_credits`.
 
 ## Run the servers separately
 
@@ -42,9 +45,9 @@ cd examples/vanilla-php
 ```
 
 Set `BASE_URL` to point at another BFF instance. The script checks health,
-CSRF bootstrap, malformed/inactive/valid codes, idle current, simulacrum,
-activation, resume, refresh, abort, and the final idle state. It exits non-zero
-on the first failed assertion.
+CSRF bootstrap, credits and pagination, malformed/inactive/valid codes, idle
+current, simulacrum, activation, resume, refresh, abort, and the final idle
+state. It exits non-zero on the first failed assertion.
 
 ## Run against the real or local API
 

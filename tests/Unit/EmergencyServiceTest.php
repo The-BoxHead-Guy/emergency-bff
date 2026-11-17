@@ -10,6 +10,8 @@ use DataEmergencia\EmergencyBff\Api\WhatsAppClient;
 use DataEmergencia\EmergencyBff\Emergency\EmergencyService;
 use DataEmergencia\EmergencyBff\Emergency\Exception\AlreadyActiveEmergencyException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\ForbiddenEmergencyException;
+use DataEmergencia\EmergencyBff\Emergency\Exception\InsufficientCreditsException;
+use DataEmergencia\EmergencyBff\Emergency\Exception\MissingContactsException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\WhatsAppFailureException;
 use DataEmergencia\EmergencyBff\Emergency\Identity;
 use DataEmergencia\EmergencyBff\Emergency\InMemoryIdempotencyStore;
@@ -148,6 +150,7 @@ final class EmergencyServiceTest extends TestCase
         self::assertNull($created['responders'][0]['message_id']);
 
         $activation = $client->callsTo('POST', 'emergency/activation')[0]['body'];
+        self::assertSame('EMG1', $activation['emergency_id']);
         self::assertSame('EMG1', $activation['recipients'][0]['variables']['emergency_code']);
 
         $updated = $client->callsTo('PUT', '/v2/emergency/EMG1')[0]['body'];
@@ -173,12 +176,15 @@ final class EmergencyServiceTest extends TestCase
 
     public function test_it_returns_a_numeric_upstream_id_as_a_string(): void
     {
-        [$service] = $this->service($this->client(emergency: self::EMERGENCY_NUMERIC));
+        [$service, $client] = $this->service($this->client(emergency: self::EMERGENCY_NUMERIC));
 
         $result = $service->activate(Identity::fromCode('DABC12'));
 
         self::assertSame('130', $result->emergencyId);
         self::assertSame('130', $result->toArray()['emergency_id']);
+
+        $activation = $client->callsTo('POST', 'emergency/activation')[0]['body'];
+        self::assertSame('130', $activation['emergency_id']);
     }
 
     public function test_activation_returns_the_reporter_phone(): void
@@ -243,6 +249,60 @@ final class EmergencyServiceTest extends TestCase
             self::assertCount(1, $client->callsTo('POST', '/v2/emergency'));
             self::assertCount(1, $client->callsTo('DELETE', '/v2/emergency/EMG1'));
             self::assertCount(0, $client->callsTo('PUT', '/v2/emergency/'));
+        }
+    }
+
+    public function test_the_fan_out_stops_after_the_first_insufficient_credits_result(): void
+    {
+        $sends = 0;
+        $client = $this->client(
+            whatsApp: function () use (&$sends): never {
+                $sends++;
+
+                throw ApiException::fromResponse(
+                    new ApiResponse(402, $this->fixture('responses/insufficient-credits.json')),
+                );
+            },
+            profile: $this->twoContactProfile(),
+        );
+
+        [$service] = $this->service($client);
+
+        $this->expectException(InsufficientCreditsException::class);
+
+        try {
+            $service->activate(Identity::fromCode('DABC12'));
+        } finally {
+            self::assertSame(1, $sends);
+            self::assertCount(1, $client->callsTo('POST', '/v2/emergency'));
+            self::assertCount(1, $client->callsTo('DELETE', '/v2/emergency/EMG1'));
+            self::assertCount(0, $client->callsTo('PUT', '/v2/emergency/'));
+        }
+    }
+
+    public function test_the_simulacrum_fan_out_stops_after_the_first_insufficient_credits_result(): void
+    {
+        $sends = 0;
+        $client = $this->client(
+            whatsApp: function () use (&$sends): never {
+                $sends++;
+
+                throw ApiException::fromResponse(
+                    new ApiResponse(402, $this->fixture('responses/insufficient-credits.json')),
+                );
+            },
+            profile: $this->twoContactProfile(),
+        );
+
+        [$service] = $this->service($client);
+
+        $this->expectException(InsufficientCreditsException::class);
+
+        try {
+            $service->simulacrum(Identity::fromCode('DABC12'));
+        } finally {
+            self::assertSame(1, $sends);
+            self::assertCount(1, $client->callsTo('DELETE', '/v2/emergency/EMG1'));
         }
     }
 
@@ -337,6 +397,7 @@ final class EmergencyServiceTest extends TestCase
         self::assertTrue($created[0]['body']['is_simulated']);
 
         $payload = $client->callsTo('POST', 'emergency/simulacrum')[0]['body'];
+        self::assertSame('EMG1', $payload['emergency_id']);
         self::assertSame('EMG1', $payload['recipients'][0]['variables']['emergency_code']);
         self::assertSame('Grace Hopper', $payload['recipients'][0]['variables']['contact_name']);
         self::assertCount(0, $client->callsTo('PUT', '/v2/emergency/'));
@@ -360,6 +421,31 @@ final class EmergencyServiceTest extends TestCase
             self::assertCount(1, $client->callsTo('POST', '/v2/emergency'));
             self::assertCount(1, $client->callsTo('DELETE', '/v2/emergency/EMG1'));
         }
+    }
+
+    public function test_the_abort_path_keeps_fanning_out_after_a_legacy_402(): void
+    {
+        $sends = 0;
+        $client = $this->client(
+            whatsApp: function () use (&$sends): never {
+                $sends++;
+
+                throw ApiException::fromResponse(
+                    new ApiResponse(402, $this->fixture('responses/insufficient-credits.json')),
+                );
+            },
+            active: ['emergency_id' => 'EMG1'],
+            profile: $this->twoContactProfile(),
+        );
+
+        [$service] = $this->service($client);
+
+        $result = $service->abort(Identity::fromCode('DABC12'), 'EMG1');
+
+        self::assertSame(2, $sends);
+        self::assertCount(2, $result->failures);
+        self::assertCount(2, $client->callsTo('POST', 'whatsapp/templates/send'));
+        self::assertCount(1, $client->callsTo('DELETE', '/v2/emergency/EMG1'));
     }
 
     public function test_it_aborts_only_the_callers_emergency(): void
@@ -414,7 +500,7 @@ final class EmergencyServiceTest extends TestCase
 
         [$service] = $this->service($this->client(profile: $profile));
 
-        $this->expectException(\DataEmergencia\EmergencyBff\Emergency\Exception\MissingContactsException::class);
+        $this->expectException(MissingContactsException::class);
 
         $service->activate(Identity::fromCode('DABC12'));
     }

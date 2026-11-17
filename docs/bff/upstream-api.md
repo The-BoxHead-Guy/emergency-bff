@@ -17,9 +17,11 @@ domain model.
 | Read an emergency         | `GET`           | `/v2/emergency/{id}`                                   |
 | Delete an emergency       | `DELETE`        | `/v2/emergency/{id}`                                   |
 | Find the active emergency | `GET`           | `/v2/emergency/qr/{code}/active`                       |
+| Read the credit summary   | `GET`           | `/v2/credits/{code}`                                   |
+| Read the credit ledger    | `GET`           | `/v2/credits/{code}/history?per_page={n}&page={n}`     |
 | Send activation template  | `POST`          | `/v2/whatsapp/templates/emergency/activation`          |
 | Send simulacrum template  | `POST`          | `/v2/whatsapp/templates/emergency/simulacrum`          |
-| Send abort template       | `POST`          | `/v2/whatsapp/templates/send`                          |
+| Send abort template       | `POST`          | `/v2/whatsapp/templates/send` (unbilled)               |
 
 The canonical endpoint list lives in `src/Http/Endpoints.php`.
 
@@ -91,11 +93,12 @@ browser contract stays `message_id: string | null`.
 
 ## Typed WhatsApp request
 
-Activation and simulacrum send only the recipient phone and the variables the
-API expects:
+Activation and simulacrum send the root `emergency_id`, the recipient phone and
+the variables the API expects:
 
 ```json
 {
+  "emergency_id": "EMG123456",
   "recipients": [
     {
       "phone": "573001234567",
@@ -108,8 +111,10 @@ API expects:
 }
 ```
 
-Simulacrum adds `contact_name`. The API builds the Meta payload, including the
-template name, language, image, date and QR link.
+Simulacrum adds `contact_name`. `emergency_code` is the emergency id used as the
+URL button suffix; `emergency_id` is what the API uses to resolve the chargeable
+initiator code. The API builds the Meta payload, including the template name,
+language, image, date and QR link.
 
 ## Typed WhatsApp response
 
@@ -152,6 +157,22 @@ resolves to `null`.
 A `200` with `status: failed` or without a valid WAMID is treated as a failed
 send: the BFF marks that responder `sent: false, failed: true,
 message_id: null` and records a failure with the real HTTP status.
+
+## Credits
+
+The API owns the balance, contact count, rounds, extra alerts and label; the
+BFF copies them and never recomputes them. A credits `404` becomes
+`404 inactive_code`; other upstream failures become `502 upstream_error`.
+
+## Insufficient credits
+
+The typed activation and simulacrum templates are billed. When the API rejects a
+send with `402 INSUFFICIENT_CREDITS`, the BFF marks that responder failed, stops
+the remaining fan-out, deletes the emergency it created and returns
+`402 insufficient_credits`.
+
+Abort uses the unbilled `POST /v2/whatsapp/templates/send` contract and is not
+affected.
 
 ## Emergency update
 
@@ -210,7 +231,8 @@ which expects the WAMID.
 - `POST`, `PUT` and `DELETE` are never retried automatically. Callers can make
   them idempotent with `Idempotency-Key`.
 - Upstream error bodies are translated into `ApiException`, then into
-  `502 upstream_error` with `details.status` and `details.upstream_code`.
+  `502 upstream_error` with `details.status` and `details.upstream_code`, except
+  a `402` from a typed template send, which maps to `insufficient_credits`.
 - The upstream raw body is preserved on `ApiResponse` for debugging, but it is
   not returned to the browser.
 

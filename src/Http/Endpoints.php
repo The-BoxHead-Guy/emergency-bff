@@ -72,4 +72,18 @@ final class Endpoints
     {
         return '/v2/whatsapp/templates/emergency/simulacrum';
     }
+
+    public static function creditSummary(string $code): string
+    {
+        return sprintf('/v2/credits/%s', rawurlencode($code));
+    }
+
+    public static function creditHistory(string $code, int $perPage = 15, int $page = 1): string
+    {
+        return sprintf(
+            '/v2/credits/%s/history?%s',
+            rawurlencode($code),
+            http_build_query(['per_page' => $perPage, 'page' => $page]),
+        );
+    }
 }

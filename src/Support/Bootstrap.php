@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace DataEmergencia\EmergencyBff\Support;
 
+use DataEmergencia\EmergencyBff\Api\CreditRepository;
 use DataEmergencia\EmergencyBff\Api\EmergencyRepository;
 use DataEmergencia\EmergencyBff\Api\ProfileRepository;
 use DataEmergencia\EmergencyBff\Api\WhatsAppClient;
@@ -60,6 +61,7 @@ final class Bootstrap
             session: $session,
             validator: new CodeValidator($http),
             emergency: $service,
+            credits: new CreditRepository($http),
             logger: $logger,
         );
     }

@@ -1,0 +1,20 @@
+{
+  "meta": {
+    "timestamp": "2026-11-16T14:25:28+00:00",
+    "api_version": "2.0.0",
+    "status": 200
+  },
+  "data": {
+    "type": "credits",
+    "id": "credits|DABC12",
+    "attributes": {
+      "code": "DABC12",
+      "domain": "emergency",
+      "balance": 9,
+      "contacts_count": 1,
+      "rounds": 9,
+      "extra_alerts": 0,
+      "rounds_label": "9 rounds"
+    }
+  }
+}

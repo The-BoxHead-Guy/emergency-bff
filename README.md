@@ -110,6 +110,20 @@ is none.
 }
 ```
 
+### `GET /credits`
+
+Returns the session code's credit balance, contacts count, rounds and extra
+alerts. The values come from the API and are never recomputed by the BFF.
+
+### `GET /credits/history`
+
+Returns the append-only credit ledger, newest first. Optional `per_page`
+(between `1` and `100`, default `15`) and `page` (minimum `1`) select a slice.
+Invalid values return `422 validation_failed` before any upstream call.
+
+Response shapes and pagination rules live in the
+[API contract](docs/api-contract.md#credits).
+
 ### `POST /activate`
 
 Activates the emergency and messages the emergency contacts.
@@ -190,7 +204,9 @@ Aborts the emergency and clears the session state.
 ```
 
 Errors use one envelope and carry the same id as the `X-Request-Id` response
-header:
+header. Activation and simulacrum return `402 insufficient_credits` when the
+account cannot pay for the typed template send. The abort template stays on the
+unbilled endpoint.
 
 ```json
 {

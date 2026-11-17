@@ -63,6 +63,24 @@ final class ApiClientTest extends TestCase
         }
     }
 
+    public function test_it_parses_the_errors_array_envelope(): void
+    {
+        $fixture = $this->fixture('responses/insufficient-credits.json');
+        $handler = new MockHandler([
+            new Response(402, [], (string) json_encode($fixture)),
+        ]);
+
+        try {
+            $this->client($handler)->get('/v2/credits/DABC12');
+            self::fail('Expected an API exception.');
+        } catch (ApiException $exception) {
+            self::assertSame(402, $exception->status());
+            self::assertSame('INSUFFICIENT_CREDITS', $exception->errorCode());
+            self::assertSame('La cuenta no tiene créditos suficientes para enviar mensajes de WhatsApp.', $exception->getMessage());
+            self::assertSame('INSUFFICIENT_CREDITS', $exception->details()[0]['code']);
+        }
+    }
+
     public function test_it_retries_idempotent_reads_on_server_errors(): void
     {
         $handler = new MockHandler([

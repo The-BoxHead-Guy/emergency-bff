@@ -43,6 +43,16 @@ json() {
   ' "$1"
 }
 
+count_json() {
+  printf '%s' "$BODY" | php -r '
+    $data = json_decode(stream_get_contents(STDIN), true);
+    foreach (explode(".", $argv[1]) as $key) {
+        $data = is_array($data) && array_key_exists($key, $data) ? $data[$key] : null;
+    }
+    echo is_array($data) ? count($data) : -1;
+  ' "$1"
+}
+
 call() {
   local method="$1" path="$2" token="${3:-}" data="${4:-}"
   local args=(-sS -o "$BODY_FILE" -w '%{http_code}' -b "$JAR" -c "$JAR" -X "$method" "$BASE$path")
@@ -69,6 +79,11 @@ TOKEN="$(json csrf_token)"
 [ "${#TOKEN}" -eq 64 ] || fail "expected a 64-character CSRF token, got '$TOKEN'"
 pass "config exposes a CSRF token"
 
+call GET /credits
+assert_status 401
+assert_field error.code unauthenticated
+pass "credits requires a session"
+
 call POST /session "$TOKEN" '{"code":"bad"}'
 assert_status 422
 assert_field error.code invalid_code
@@ -84,6 +99,23 @@ assert_status 201
 TOKEN="$(json csrf_token)"
 assert_field code DABC12
 pass "valid code starts a session"
+
+call GET /credits
+assert_status 200
+assert_field credit.balance 9
+assert_field credit.rounds 9
+pass "credits summary returns the balance and rounds"
+
+call GET '/credits/history?per_page=1'
+assert_status 200
+assert_field pagination.per_page 1
+[ "$(count_json items)" = "1" ] || fail "expected one history item: $BODY"
+pass "credit history honors per_page"
+
+call GET '/credits/history?per_page=0'
+assert_status 422
+assert_field error.code validation_failed
+pass "credit history rejects an out-of-range per_page"
 
 call GET /current
 assert_status 200
