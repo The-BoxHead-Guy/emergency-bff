@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace DataEmergencia\EmergencyBff\Emergency;
 
+use DataEmergencia\EmergencyBff\Support\ArrayReader;
 use DataEmergencia\EmergencyBff\WhatsApp\Responder;
 
 /**
@@ -40,28 +41,38 @@ final class EmergencyResult
      */
     public static function fromArray(array $payload): self
     {
+        $payloadResponders = ArrayReader::get($payload, 'responders');
+        $payloadResponders = is_array($payloadResponders) ? $payloadResponders : [];
+
         $responders = array_map(
             static function (array $responder): Responder {
+                $messageId = ArrayReader::get($responder, 'message_id');
+
                 return new Responder(
-                    phone: (string) ($responder['phone'] ?? ''),
-                    name: (string) ($responder['name'] ?? ''),
-                    sent: (bool) ($responder['sent'] ?? false),
-                    delivered: (bool) ($responder['delivered'] ?? false),
-                    read: (bool) ($responder['read'] ?? false),
-                    failed: (bool) ($responder['failed'] ?? false),
-                    messageId: isset($responder['message_id']) ? (string) $responder['message_id'] : null,
+                    phone: (string) ArrayReader::get($responder, 'phone', ''),
+                    name: (string) ArrayReader::get($responder, 'name', ''),
+                    sent: (bool) ArrayReader::get($responder, 'sent', false),
+                    delivered: (bool) ArrayReader::get($responder, 'delivered', false),
+                    read: (bool) ArrayReader::get($responder, 'read', false),
+                    failed: (bool) ArrayReader::get($responder, 'failed', false),
+                    messageId: $messageId !== null ? (string) $messageId : null,
                 );
             },
-            is_array($payload['responders'] ?? null) ? $payload['responders'] : [],
+            $payloadResponders,
         );
 
+        $emergencyId = ArrayReader::get($payload, 'emergency_id');
+        $failures = ArrayReader::get($payload, 'failures');
+        $snapshot = ArrayReader::get($payload, 'snapshot');
+        $reporterPhone = ArrayReader::get($payload, 'reporter_phone');
+
         return new self(
-            emergencyId: isset($payload['emergency_id']) ? (string) $payload['emergency_id'] : null,
+            emergencyId: $emergencyId !== null ? (string) $emergencyId : null,
             responders: $responders,
-            failures: is_array($payload['failures'] ?? null) ? $payload['failures'] : [],
-            simulated: (bool) ($payload['simulated'] ?? false),
-            snapshot: is_array($payload['snapshot'] ?? null) ? $payload['snapshot'] : [],
-            reporterPhone: isset($payload['reporter_phone']) ? (string) $payload['reporter_phone'] : null,
+            failures: is_array($failures) ? $failures : [],
+            simulated: (bool) ArrayReader::get($payload, 'simulated', false),
+            snapshot: is_array($snapshot) ? $snapshot : [],
+            reporterPhone: $reporterPhone !== null ? (string) $reporterPhone : null,
         );
     }
 

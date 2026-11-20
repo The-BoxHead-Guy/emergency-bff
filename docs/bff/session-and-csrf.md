@@ -2,142 +2,86 @@
 
 Applies to: vanilla PHP and Laravel integrators.
 
-The BFF keeps the browser identity in a server-side PHP session. The browser
-never receives the API key, the application identifier or the upstream user
-token.
+The browser holds a PHP session; the BFF holds the credentials. That split is
+the reason the package exists: the API key, the application identifier and the
+identity binding never reach JavaScript.
 
-## Session lifecycle
+## Why a session if the panel already has a code
 
-1. `GET /config` starts a native session and returns a CSRF token.
-2. `POST /session` validates the 6-character code, regenerates the session ID
-   and stores the identity. It returns a rotated CSRF token.
-3. Every later route requires that identity. A missing identity returns
-   `401 unauthenticated`.
-4. The session expires after `EMERGENCY_BFF_SESSION_TTL` seconds of inactivity.
-   Activity slides the window.
+The code identifies a person. The session proves that the same browser started
+the flow, and it carries the CSRF token, the rate-limit counters and the last
+emergency snapshot. Without it, anyone who knew a code could read or abort an
+emergency. Possession of the code is therefore enough to _start_ a session — if
+a bracelet is lost, revoke the code upstream.
 
-Session keys used by the package:
+## Lifecycle
 
-| Key                    | Contents                                              |
-| ---------------------- | ----------------------------------------------------- |
-| `de_bff_identity`      | The validated 6-character code.                       |
-| `de_bff_csrf_token`    | The current CSRF token.                               |
-| `de_bff_emergency`     | Last emergency snapshot returned by the upstream API. |
-| `de_bff_started_at`    | Session start timestamp.                              |
-| `de_bff_last_activity` | Last request timestamp used for the sliding TTL.      |
+1. `GET /config` starts a session and returns a CSRF token.
+2. `POST /session` validates the code upstream, regenerates the session ID and
+   stores the identity. It returns a rotated token.
+3. Every later route requires that identity; otherwise `401 unauthenticated`.
+4. After `EMERGENCY_BFF_SESSION_TTL` seconds of inactivity the session is
+   destroyed. Activity slides the window.
 
-The exact key names are implementation details; do not read or write them from
-your application.
+Starting a session with a different code replaces the identity. There is no
+logout route: call `DELETE /{id}` to end an active emergency, then start a new
+session. A host that supports logout must destroy the BFF session itself and
+expire its cookie; destroying the server-side session does not expire the
+browser cookie.
 
 ## CSRF
 
-Every unsafe request (`POST`, `PUT`, `PATCH`, `DELETE`) must present the token
-returned by `GET /config` or `POST /session`:
+Unsafe requests (`POST`, `PUT`, `PATCH`, `DELETE`) must send the current token:
 
 ```http
 X-CSRF-Token: <token>
 ```
 
-The token is also accepted in the JSON body as `csrf_token`. The package uses a
-64-character token and constant-time comparison.
+The JSON body field `csrf_token` is also accepted. `POST /session` rotates the
+token, so discard the previous value after a successful start. Keep the token in
+memory and send the header; do not store it in `localStorage`.
 
-Keep the token in memory and send `X-CSRF-Token`. Do not store the token in
-`localStorage`.
+Two tabs share one session, so the last tab to start a session invalidates the
+other tab's token. The stale tab must reload and read a fresh token.
 
-`POST /session` rotates the token. Discard the previous value after a successful
-session start.
+## Same origin
 
-A missing or invalid token returns:
+The BFF requires the page and the API to share scheme, host and port. `Origin`
+is compared with `Host`, and a mismatch returns `403 cross_origin_denied` before
+the session is read. This protects a signed-in visitor from a malicious page
+starting sessions or activating emergencies in the background.
 
-```json
-{
-  "error": {
-    "code": "csrf_failed",
-    "message": "The CSRF token is missing or invalid.",
-    "details": {},
-    "request_id": "9f3a1c7e2b4d8065"
-  }
-}
-```
+Behind a reverse proxy, forward the original `Host` and `Origin` unchanged. A
+proxy that rewrites `Host` to an internal name breaks the check; fix the proxy,
+not the middleware.
 
-## Same-origin policy
+## Host constraints
 
-`SameOriginMiddleware` compares the `Origin` request header with the `Host`
-header. A different host or port is rejected with
-`403 cross_origin_denied`. Same-origin requests receive an
-`Access-Control-Allow-Origin` echo and `Vary: Origin`.
+- `Bootstrap::create()` starts the PHP session while it builds the stack. Do not
+  call it while your application already has a native session open unless you
+  replace the session store: PHP keeps one session per request, and the BFF would
+  silently adopt your session name and write its keys into it.
+- The session store is the integration point for framework hosts. Implement
+  `DataEmergencia\EmergencyBff\Session\SessionStore` and pass it to
+  `SessionManager`. The adapter must call `regenerate()` before storing a new
+  identity and stay available for the whole request.
+- `destroy()` removes the server-side data but not the browser cookie. A host
+  performing logout must expire the cookie explicitly.
+- The default store is PHP's file handler. Multiple nodes need a shared handler
+  (redis, memcached or database), or a request can land on a node that does not
+  know the session and return `401`.
 
-This means the BFF must be served from the same origin as the page that calls
-it. If you terminate TLS or proxy at a different host, preserve the original
-`Host` header rather than rewriting it to the internal upstream name.
+## Laravel
 
-## Replacing the session store
+Keep the two session systems separate. Either forward the BFF route prefix to
+`public/index.php` (recommended) or register the BFF as its own virtual host.
+Exempt the prefix from Laravel's CSRF middleware; the BFF validates its own
+token. Do not let both layers validate the same request.
 
-Hosts can replace the native store by implementing
-`DataEmergencia\EmergencyBff\Session\SessionStore`:
+The alternative is to implement `SessionStore` over the Laravel session. The
+BFF's CSRF manager is not replaceable in the MVP; only the store is.
 
-```php
-namespace DataEmergencia\EmergencyBff\Session;
+## Security
 
-interface SessionStore
-{
-    public function get(string $key): mixed;
-
-    public function set(string $key, mixed $value): void;
-
-    public function remove(string $key): void;
-
-    public function regenerate(): void;
-
-    public function destroy(): void;
-}
-```
-
-`SessionManager` accepts any implementation. The default
-`NativeSessionStore` configures `session_name`, `session_set_cookie_params()` and
-`session_start()`, and calls `session_regenerate_id(true)` on identity changes.
-
-A framework adapter must call `regenerate()` before storing a new identity and
-must keep the store available for the whole request. The BFF calls the store
-directly; it does not start a framework session for you.
-
-## Laravel integration
-
-The MVP supports Laravel in two ways.
-
-### Forward the routes
-
-Exempt the BFF route prefix from Laravel's CSRF middleware and forward those
-requests to `public/index.php`, or register the BFF as a separate virtual host.
-This is the safest option because Laravel and the BFF each keep their own
-session and CSRF state.
-
-```php
-// bootstrap/app.php (Laravel 11+)
-->withExceptions(function (Exceptions $exceptions): void {
-    // No change needed; BFF routes are not registered in Laravel.
-})
-```
-
-If you proxy instead of forwarding, preserve `Host`, `Origin`, cookies and the
-raw request body.
-
-### Replace the session store
-
-Register a `SessionStore` backed by the Laravel session and construct the BFF
-services with `Bootstrap` or manually. The CSRF token still comes from the BFF's
-`SessionManager`; Laravel's own CSRF middleware must not validate BFF requests.
-Frontends should read the token from `GET /config` and keep it in memory.
-
-The BFF's CSRF manager is not replaceable in the MVP; the store is.
-
-## Logout and code switching
-
-Starting a session with a different code regenerates the session ID. Call
-`DELETE /{id}` to end an active emergency, then `POST /session` with the new
-code. Destroy the browser session explicitly if your application supports
-logout; the BFF does not expose a logout route in the MVP.
-
-## Next step
-
-[Routes](routes.md).
+For the threat model, credential handling and the one known authorization
+limitation, read [Security](security.md).

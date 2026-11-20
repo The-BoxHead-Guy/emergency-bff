@@ -9,6 +9,7 @@ use DataEmergencia\EmergencyBff\Http\ApiClient;
 use DataEmergencia\EmergencyBff\Http\ApiException;
 use DataEmergencia\EmergencyBff\Http\ApiResponse;
 use DataEmergencia\EmergencyBff\Http\Endpoints;
+use DataEmergencia\EmergencyBff\Support\ArrayReader;
 
 /**
  * Normalizes the upstream credit summary and ledger payloads.
@@ -33,21 +34,22 @@ final class CreditRepository
     public function summary(string $code): array
     {
         $response = $this->fetch(Endpoints::creditSummary($code), $code);
+        $body = $response->body();
 
         $attributes = $this->firstArray([
-            $response->body()['data']['attributes'] ?? null,
-            $response->body()['attributes'] ?? null,
-            $response->body()['data'] ?? null,
+            ArrayReader::get($body, 'data.attributes'),
+            ArrayReader::get($body, 'attributes'),
+            ArrayReader::get($body, 'data'),
         ]);
 
         return [
-            'code' => $this->string($attributes['code'] ?? null, $code),
-            'domain' => $this->string($attributes['domain'] ?? null, ''),
-            'balance' => $this->integer($attributes['balance'] ?? null),
-            'contacts_count' => $this->integer($attributes['contacts_count'] ?? null),
-            'rounds' => $this->integer($attributes['rounds'] ?? null),
-            'extra_alerts' => $this->integer($attributes['extra_alerts'] ?? null),
-            'rounds_label' => $this->string($attributes['rounds_label'] ?? null, ''),
+            'code' => $this->string(ArrayReader::get($attributes, 'code'), $code),
+            'domain' => $this->string(ArrayReader::get($attributes, 'domain'), ''),
+            'balance' => $this->integer(ArrayReader::get($attributes, 'balance')),
+            'contacts_count' => $this->integer(ArrayReader::get($attributes, 'contacts_count')),
+            'rounds' => $this->integer(ArrayReader::get($attributes, 'rounds')),
+            'extra_alerts' => $this->integer(ArrayReader::get($attributes, 'extra_alerts')),
+            'rounds_label' => $this->string(ArrayReader::get($attributes, 'rounds_label'), ''),
         ];
     }
 
@@ -60,10 +62,15 @@ final class CreditRepository
     public function history(string $code, int $perPage, int $page): array
     {
         $response = $this->fetch(Endpoints::creditHistory($code, $perPage, $page), $code);
+        $body = $response->body();
 
-        $data = $response->body()['data'] ?? null;
-        $items = is_array($data) && is_array($data['items'] ?? null) ? $data['items'] : [];
-        $pagination = is_array($data) && is_array($data['pagination'] ?? null) ? $data['pagination'] : [];
+        $data = ArrayReader::get($body, 'data');
+        $data = is_array($data) ? $data : [];
+
+        $items = ArrayReader::get($data, 'items');
+        $items = is_array($items) ? $items : [];
+        $pagination = ArrayReader::get($data, 'pagination');
+        $pagination = is_array($pagination) ? $pagination : [];
 
         return [
             'items' => array_values(array_map(
@@ -71,10 +78,10 @@ final class CreditRepository
                 $items,
             )),
             'pagination' => [
-                'total' => $this->integer($pagination['total'] ?? null),
-                'per_page' => $this->integer($pagination['per_page'] ?? null, $perPage),
-                'current_page' => $this->integer($pagination['current_page'] ?? null, 1),
-                'last_page' => $this->integer($pagination['last_page'] ?? null, 1),
+                'total' => $this->integer(ArrayReader::get($pagination, 'total')),
+                'per_page' => $this->integer(ArrayReader::get($pagination, 'per_page'), $perPage),
+                'current_page' => $this->integer(ArrayReader::get($pagination, 'current_page'), 1),
+                'last_page' => $this->integer(ArrayReader::get($pagination, 'last_page'), 1),
             ],
         ];
     }
@@ -88,20 +95,21 @@ final class CreditRepository
             $item = [];
         }
 
-        $attributes = is_array($item['attributes'] ?? null) ? $item['attributes'] : $item;
+        $attributes = ArrayReader::get($item, 'attributes');
+        $attributes = is_array($attributes) ? $attributes : $item;
         $shape = array_merge($item, $attributes);
 
         return [
-            'id' => $this->integer($shape['id'] ?? null),
-            'type' => $this->string($shape['type'] ?? null, ''),
-            'amount' => $this->integer($shape['amount'] ?? null),
-            'balance_after' => $this->integer($shape['balance_after'] ?? null),
-            'contacts_count' => $this->integer($shape['contacts_count'] ?? null),
-            'rounds' => $this->integer($shape['rounds'] ?? null),
-            'extra_alerts' => $this->integer($shape['extra_alerts'] ?? null),
-            'emergency_id' => $this->nullableInteger($shape['emergency_id'] ?? null),
-            'reference' => $this->nullableString($shape['reference'] ?? null),
-            'created_at' => $this->nullableString($shape['created_at'] ?? null),
+            'id' => $this->integer(ArrayReader::get($shape, 'id')),
+            'type' => $this->string(ArrayReader::get($shape, 'type'), ''),
+            'amount' => $this->integer(ArrayReader::get($shape, 'amount')),
+            'balance_after' => $this->integer(ArrayReader::get($shape, 'balance_after')),
+            'contacts_count' => $this->integer(ArrayReader::get($shape, 'contacts_count')),
+            'rounds' => $this->integer(ArrayReader::get($shape, 'rounds')),
+            'extra_alerts' => $this->integer(ArrayReader::get($shape, 'extra_alerts')),
+            'emergency_id' => $this->nullableInteger(ArrayReader::get($shape, 'emergency_id')),
+            'reference' => $this->nullableString(ArrayReader::get($shape, 'reference')),
+            'created_at' => $this->nullableString(ArrayReader::get($shape, 'created_at')),
         ];
     }
 

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace DataEmergencia\EmergencyBff\Http;
 
+use DataEmergencia\EmergencyBff\Support\ArrayReader;
+
 /**
  * Immutable upstream API response.
  */
@@ -64,7 +66,7 @@ final class ApiResponse
 
     public function value(string $key, mixed $default = null): mixed
     {
-        return $this->body[$key] ?? $default;
+        return ArrayReader::get($this->body, $key) ?? $default;
     }
 
     /**

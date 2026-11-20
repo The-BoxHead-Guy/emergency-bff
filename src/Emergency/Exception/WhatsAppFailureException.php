@@ -12,7 +12,7 @@ final class WhatsAppFailureException extends EmergencyException
     public function __construct(array $failures)
     {
         parent::__construct(
-            'No se pudo enviar ningún mensaje de plantilla de WhatsApp.',
+            'No WhatsApp template message could be delivered.',
             'whatsapp_failure',
             ['failures' => $failures],
         );

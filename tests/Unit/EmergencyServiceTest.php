@@ -11,11 +11,12 @@ use DataEmergencia\EmergencyBff\Emergency\EmergencyService;
 use DataEmergencia\EmergencyBff\Emergency\Exception\AlreadyActiveEmergencyException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\ForbiddenEmergencyException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\InsufficientCreditsException;
-use DataEmergencia\EmergencyBff\Emergency\Exception\MissingContactsException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\WhatsAppFailureException;
+use DataEmergencia\EmergencyBff\Emergency\Exception\MissingContactsException;
 use DataEmergencia\EmergencyBff\Emergency\Identity;
 use DataEmergencia\EmergencyBff\Emergency\InMemoryIdempotencyStore;
 use DataEmergencia\EmergencyBff\Http\ApiException;
+use DataEmergencia\EmergencyBff\Http\ClientMessages;
 use DataEmergencia\EmergencyBff\Http\ApiResponse;
 use DataEmergencia\EmergencyBff\Tests\Support\FakeApiClient;
 use DataEmergencia\EmergencyBff\Tests\TestCase;
@@ -102,7 +103,7 @@ final class EmergencyServiceTest extends TestCase
                 return new ApiResponse(201, $emergency);
             }
 
-            if ($method === 'PUT' && $path === '/v2/emergency/'.$emergencyId) {
+            if ($method === 'PUT' && $path === "/v2/emergency/{$emergencyId}") {
                 return new ApiResponse(200, [
                     'data' => [
                         'attributes' => [
@@ -114,7 +115,7 @@ final class EmergencyServiceTest extends TestCase
                 ]);
             }
 
-            if ($method === 'GET' && $path === '/v2/emergency/'.$emergencyId) {
+            if ($method === 'GET' && $path === "/v2/emergency/{$emergencyId}") {
                 return new ApiResponse(200, $emergency);
             }
 
@@ -122,7 +123,7 @@ final class EmergencyServiceTest extends TestCase
                 return new ApiResponse(204);
             }
 
-            throw new \RuntimeException('Unexpected request: '.$method.' '.$path);
+            throw new \RuntimeException("Unexpected request: {$method} {$path}");
         });
     }
 
@@ -137,7 +138,7 @@ final class EmergencyServiceTest extends TestCase
         self::assertSame('wamid.1', $result->responders[0]->messageId);
         self::assertFalse($result->isPartialFailure());
 
-        $methods = array_map(static fn (array $call): string => $call['method'].' '.$call['path'], $client->calls);
+        $methods = array_map(static fn (array $call): string => "{$call['method']} {$call['path']}", $client->calls);
         self::assertSame('GET /v2/emergency/qr/DABC12/active', $methods[0]);
         self::assertSame('GET /v2/fmd/DABC12/models/data?model=personal,emergencia', $methods[1]);
         self::assertSame('POST /v2/emergency', $methods[2]);
@@ -228,6 +229,15 @@ final class EmergencyServiceTest extends TestCase
         self::assertTrue($result->isPartialFailure());
         self::assertCount(1, $result->failures);
         self::assertSame('447700900123', $result->failures[0]['phone']);
+        self::assertSame(
+            ClientMessages::message(ClientMessages::FAILURE_SEND_FAILED),
+            $result->failures[0]['message']
+        );
+        self::assertSame(422, $result->failures[0]['status']);
+        self::assertStringNotContainsString(
+            'Invalid number',
+            json_encode($result->failures, JSON_THROW_ON_ERROR)
+        );
         self::assertCount(1, $client->callsTo('POST', '/v2/emergency'));
     }
 
@@ -444,8 +454,30 @@ final class EmergencyServiceTest extends TestCase
 
         self::assertSame(2, $sends);
         self::assertCount(2, $result->failures);
+        self::assertSame(
+            ClientMessages::message(ClientMessages::FAILURE_INSUFFICIENT_CREDITS),
+            $result->failures[0]['message']
+        );
+        self::assertSame(402, $result->failures[0]['status']);
+        self::assertStringNotContainsString(
+            'La cuenta no tiene créditos suficientes',
+            json_encode($result->failures, JSON_THROW_ON_ERROR)
+        );
         self::assertCount(2, $client->callsTo('POST', 'whatsapp/templates/send'));
         self::assertCount(1, $client->callsTo('DELETE', '/v2/emergency/EMG1'));
+    }
+
+    public function test_the_internal_exception_messages_stay_in_english(): void
+    {
+        self::assertSame(
+            'The account does not have enough credits to send WhatsApp messages.',
+            (new InsufficientCreditsException('DABC12'))->getMessage()
+        );
+
+        self::assertSame(
+            'No WhatsApp template message could be delivered.',
+            (new WhatsAppFailureException([]))->getMessage()
+        );
     }
 
     public function test_it_aborts_only_the_callers_emergency(): void

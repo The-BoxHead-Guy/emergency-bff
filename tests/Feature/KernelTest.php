@@ -13,6 +13,7 @@ use DataEmergencia\EmergencyBff\Emergency\CodeValidator;
 use DataEmergencia\EmergencyBff\Emergency\EmergencyService;
 use DataEmergencia\EmergencyBff\Http\ApiException;
 use DataEmergencia\EmergencyBff\Http\ApiResponse;
+use DataEmergencia\EmergencyBff\Http\ClientMessages;
 use DataEmergencia\EmergencyBff\Http\Kernel;
 use DataEmergencia\EmergencyBff\Http\Request;
 use DataEmergencia\EmergencyBff\Http\Response;
@@ -93,7 +94,7 @@ final class KernelTest extends TestCase
         self::assertIsArray($current->body()['emergency']['responders']);
         $this->assertResponderPayload($current->body()['emergency']['responders'][0], '42');
 
-        $refreshed = $kernel->handle($this->json('POST', '/de-bff/emergency/'.$expected.'/refresh', [], $token));
+        $refreshed = $kernel->handle($this->json('POST', "/de-bff/emergency/{$expected}/refresh", [], $token));
         self::assertSame(200, $refreshed->status());
         self::assertSame($expected, $refreshed->body()['emergency']['emergency_id']);
         self::assertIsArray($refreshed->body()['emergency']);
@@ -101,7 +102,7 @@ final class KernelTest extends TestCase
         self::assertIsArray($refreshed->body()['emergency']['responders']);
         $this->assertResponderPayload($refreshed->body()['emergency']['responders'][0], '42');
 
-        $aborted = $kernel->handle($this->json('DELETE', '/de-bff/emergency/'.$expected, [], $token));
+        $aborted = $kernel->handle($this->json('DELETE', "/de-bff/emergency/{$expected}", [], $token));
         self::assertSame(200, $aborted->status());
         self::assertSame($expected, $aborted->body()['emergency_id']);
         self::assertTrue($aborted->body()['deleted']);
@@ -157,7 +158,7 @@ final class KernelTest extends TestCase
                 return new ApiResponse(204);
             }
 
-            throw new \RuntimeException('Unexpected request: '.$method.' '.$path);
+            throw new \RuntimeException("Unexpected request: {$method} {$path}");
         });
 
         $kernel = $this->kernel($client);
@@ -433,6 +434,50 @@ final class KernelTest extends TestCase
         self::assertSame('upstream_error', $response->body()['error']['code']);
         self::assertSame(503, $response->body()['error']['details']['status']);
         self::assertSame('application/json; charset=utf-8', $response->headers()['Content-Type']);
+        self::assertStringNotContainsString('Unavailable', json_encode($response->body(), JSON_THROW_ON_ERROR));
+    }
+
+    public function test_a_total_send_failure_does_not_leak_the_upstream_message(): void
+    {
+        $client = new FakeApiClient(function (string $method, string $path): ApiResponse {
+            if ($method === 'GET' && str_ends_with($path, '/exists')) {
+                return new ApiResponse(200, ['data' => ['attributes' => ['exists' => true]]]);
+            }
+
+            if ($method === 'GET' && str_contains($path, 'models/data')) {
+                return new ApiResponse(200, $this->fixture('responses/success.json'));
+            }
+
+            if ($method === 'GET' && str_contains($path, '/active')) {
+                throw ApiException::fromResponse(new ApiResponse(404));
+            }
+
+            if ($method === 'POST' && $path === '/v2/emergency') {
+                return new ApiResponse(201, [
+                    'data' => ['attributes' => ['emergency_id' => 'EMG1', 'is_active' => true]],
+                ]);
+            }
+
+            if ($method === 'POST' && str_contains($path, 'whatsapp/templates/emergency/')) {
+                throw ApiException::fromResponse(new ApiResponse(503, ['message' => 'Unavailable']));
+            }
+
+            if ($method === 'DELETE' && str_starts_with($path, '/v2/emergency/')) {
+                return new ApiResponse(204);
+            }
+
+            throw new \RuntimeException("Unexpected request: {$method} {$path}");
+        });
+
+        $kernel = $this->kernel($client);
+        $token = $this->csrfToken($kernel);
+        $session = $kernel->handle($this->json('POST', '/de-bff/emergency/session', ['code' => 'DABC12'], $token));
+
+        $response = $kernel->handle($this->json('POST', '/de-bff/emergency/activate', [], $session->body()['csrf_token']));
+
+        self::assertSame(502, $response->status());
+        self::assertSame('whatsapp_delivery_failed', $response->body()['error']['code']);
+        self::assertStringNotContainsString('Unavailable', json_encode($response->body(), JSON_THROW_ON_ERROR));
     }
 
     /**
@@ -443,7 +488,7 @@ final class KernelTest extends TestCase
         $kernel = $this->kernel();
 
         foreach (['/credits', '/credits/history'] as $path) {
-            $response = $kernel->handle(new Request('GET', '/de-bff/emergency'.$path));
+            $response = $kernel->handle(new Request('GET', "/de-bff/emergency{$path}"));
             self::assertSame(401, $response->status(), $path);
             self::assertSame('unauthenticated', $response->body()['error']['code']);
         }
@@ -511,7 +556,7 @@ final class KernelTest extends TestCase
                 throw ApiException::fromResponse(new ApiResponse(404));
             }
 
-            throw new \RuntimeException('Unexpected request: '.$method.' '.$path);
+            throw new \RuntimeException("Unexpected request: {$method} {$path}");
         });
 
         $kernel = $this->kernel($client);
@@ -535,7 +580,7 @@ final class KernelTest extends TestCase
                 throw ApiException::fromResponse(new ApiResponse(503, ['message' => 'Unavailable']));
             }
 
-            throw new \RuntimeException('Unexpected request: '.$method.' '.$path);
+            throw new \RuntimeException("Unexpected request: {$method} {$path}");
         });
 
         $kernel = $this->kernel($client);
@@ -580,7 +625,7 @@ final class KernelTest extends TestCase
                 return new ApiResponse(204);
             }
 
-            throw new \RuntimeException('Unexpected request: '.$method.' '.$path);
+            throw new \RuntimeException("Unexpected request: {$method} {$path}");
         });
 
         $kernel = $this->kernel($client);
@@ -608,6 +653,532 @@ final class KernelTest extends TestCase
             'non integer per_page' => [['per_page' => 'abc'], 'per_page'],
             'zero page' => [['page' => '0'], 'page'],
         ];
+    }
+
+    #[DataProvider('errorPathProvider')]
+    public function test_every_error_path_returns_the_spanish_client_copy(
+        callable $kernelFactory,
+        callable $request,
+        int $status,
+        string $code,
+        string $key,
+    ): void {
+        $kernel = $kernelFactory();
+        $response = $request($kernel);
+        $error = $response->body()['error'];
+
+        self::assertSame($status, $response->status());
+        self::assertSame($code, $error['code']);
+        self::assertTrue(ClientMessages::has($key), $key);
+        self::assertSame(ClientMessages::message($key, $error['details']), $error['message']);
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    public static function errorPathProvider(): array
+    {
+        return [
+            'unauthenticated' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(),
+                'request' => static fn (Kernel $kernel): Response => $kernel->handle(
+                    new Request('GET', '/de-bff/emergency/current')
+                ),
+                'status' => 401,
+                'code' => 'unauthenticated',
+                'key' => 'unauthenticated',
+            ],
+            'csrf_failed' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(),
+                'request' => static fn (Kernel $kernel): Response => $kernel->handle(
+                    self::json('POST', '/de-bff/emergency/session', ['code' => 'DABC12'])
+                ),
+                'status' => 403,
+                'code' => 'csrf_failed',
+                'key' => 'csrf_failed',
+            ],
+            'cross_origin_denied' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(),
+                'request' => static fn (Kernel $kernel): Response => $kernel->handle(new Request(
+                    'GET',
+                    '/de-bff/emergency/health',
+                    ['origin' => 'https://evil.test', 'host' => 'bff.test'],
+                )),
+                'status' => 403,
+                'code' => 'cross_origin_denied',
+                'key' => 'cross_origin_denied',
+            ],
+            'emergency_forbidden' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(self::clientWithActiveEmergency('EMG9')),
+                'request' => static function (Kernel $kernel): Response {
+                    $token = self::startSession($kernel);
+
+                    return $kernel->handle(self::json('DELETE', '/de-bff/emergency/EMG1', [], $token));
+                },
+                'status' => 403,
+                'code' => 'emergency_forbidden',
+                'key' => 'emergency_forbidden',
+            ],
+            'not_found' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(),
+                'request' => static fn (Kernel $kernel): Response => $kernel->handle(
+                    new Request('GET', '/de-bff/emergency/does/not/exist')
+                ),
+                'status' => 404,
+                'code' => 'not_found',
+                'key' => 'not_found',
+            ],
+            'inactive_code' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(),
+                'request' => static fn (Kernel $kernel): Response => $kernel->handle(self::json(
+                    'POST',
+                    '/de-bff/emergency/session',
+                    ['code' => 'ZZZZZZ'],
+                    self::tokenFor($kernel),
+                )),
+                'status' => 404,
+                'code' => 'inactive_code',
+                'key' => 'inactive_code',
+            ],
+            'emergency_not_found' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(self::clientWithoutEmergency()),
+                'request' => static function (Kernel $kernel): Response {
+                    $token = self::startSession($kernel);
+
+                    return $kernel->handle(self::json('POST', '/de-bff/emergency/EMG1/refresh', [], $token));
+                },
+                'status' => 404,
+                'code' => 'emergency_not_found',
+                'key' => 'emergency_not_found',
+            ],
+            'method_not_allowed' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(),
+                'request' => static fn (Kernel $kernel): Response => $kernel->handle(
+                    new Request('GET', '/de-bff/emergency/session')
+                ),
+                'status' => 405,
+                'code' => 'method_not_allowed',
+                'key' => 'method_not_allowed',
+            ],
+            'emergency_already_active' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(self::clientWithActiveEmergency('EMG9')),
+                'request' => static function (Kernel $kernel): Response {
+                    $token = self::startSession($kernel);
+
+                    return $kernel->handle(self::json('POST', '/de-bff/emergency/activate', [], $token));
+                },
+                'status' => 409,
+                'code' => 'emergency_already_active',
+                'key' => 'emergency_already_active',
+            ],
+            'identity_code_required' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(),
+                'request' => static fn (Kernel $kernel): Response => $kernel->handle(self::json(
+                    'POST',
+                    '/de-bff/emergency/session',
+                    ['code' => '  '],
+                    self::tokenFor($kernel),
+                )),
+                'status' => 422,
+                'code' => 'validation_failed',
+                'key' => ClientMessages::IDENTITY_CODE_REQUIRED,
+            ],
+            'geolocation_object' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(),
+                'request' => static fn (Kernel $kernel): Response => $kernel->handle(self::json(
+                    'POST',
+                    '/de-bff/emergency/activate',
+                    ['geolocation' => 'north'],
+                    self::activateToken($kernel),
+                )),
+                'status' => 422,
+                'code' => 'validation_failed',
+                'key' => ClientMessages::GEOLOCATION_OBJECT,
+            ],
+            'geolocation_coordinates_numeric' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(),
+                'request' => static fn (Kernel $kernel): Response => $kernel->handle(self::json(
+                    'POST',
+                    '/de-bff/emergency/activate',
+                    ['geolocation' => ['latitude' => 'north', 'longitude' => -74.0721]],
+                    self::activateToken($kernel),
+                )),
+                'status' => 422,
+                'code' => 'validation_failed',
+                'key' => ClientMessages::GEOLOCATION_COORDINATES_NUMERIC,
+            ],
+            'geolocation_accuracy_numeric' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(),
+                'request' => static fn (Kernel $kernel): Response => $kernel->handle(self::json(
+                    'POST',
+                    '/de-bff/emergency/activate',
+                    ['geolocation' => ['latitude' => 4.711, 'longitude' => -74.0721, 'accuracy' => 'near']],
+                    self::activateToken($kernel),
+                )),
+                'status' => 422,
+                'code' => 'validation_failed',
+                'key' => ClientMessages::GEOLOCATION_ACCURACY_NUMERIC,
+            ],
+            'reporter_phone_string' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(),
+                'request' => static fn (Kernel $kernel): Response => $kernel->handle(self::json(
+                    'POST',
+                    '/de-bff/emergency/activate',
+                    ['reporter_phone' => 584121301234],
+                    self::activateToken($kernel),
+                )),
+                'status' => 422,
+                'code' => 'validation_failed',
+                'key' => ClientMessages::REPORTER_PHONE_STRING,
+            ],
+            'reporter_phone_max' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(),
+                'request' => static fn (Kernel $kernel): Response => $kernel->handle(self::json(
+                    'POST',
+                    '/de-bff/emergency/activate',
+                    ['reporter_phone' => '+58412130123456789012'],
+                    self::activateToken($kernel),
+                )),
+                'status' => 422,
+                'code' => 'validation_failed',
+                'key' => ClientMessages::REPORTER_PHONE_MAX,
+            ],
+            'reporter_phone_e164' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(),
+                'request' => static fn (Kernel $kernel): Response => $kernel->handle(self::json(
+                    'POST',
+                    '/de-bff/emergency/activate',
+                    ['reporter_phone' => 'not-a-phone'],
+                    self::activateToken($kernel),
+                )),
+                'status' => 422,
+                'code' => 'validation_failed',
+                'key' => ClientMessages::REPORTER_PHONE_E164,
+            ],
+            'query_param_integer' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(),
+                'request' => static function (Kernel $kernel): Response {
+                    self::startSession($kernel);
+
+                    return $kernel->handle(new Request(
+                        'GET',
+                        '/de-bff/emergency/credits/history',
+                        [],
+                        ['per_page' => 'abc'],
+                    ));
+                },
+                'status' => 422,
+                'code' => 'validation_failed',
+                'key' => ClientMessages::QUERY_PARAM_INTEGER,
+            ],
+            'query_param_range' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(),
+                'request' => static function (Kernel $kernel): Response {
+                    self::startSession($kernel);
+
+                    return $kernel->handle(new Request(
+                        'GET',
+                        '/de-bff/emergency/credits/history',
+                        [],
+                        ['per_page' => '0'],
+                    ));
+                },
+                'status' => 422,
+                'code' => 'validation_failed',
+                'key' => ClientMessages::QUERY_PARAM_RANGE,
+            ],
+            'invalid_code' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(),
+                'request' => static fn (Kernel $kernel): Response => $kernel->handle(self::json(
+                    'POST',
+                    '/de-bff/emergency/session',
+                    ['code' => 'bad'],
+                    self::tokenFor($kernel),
+                )),
+                'status' => 422,
+                'code' => 'invalid_code',
+                'key' => 'invalid_code',
+            ],
+            'missing_medical_profile' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(self::clientWithProfile([])),
+                'request' => static fn (Kernel $kernel): Response => $kernel->handle(self::json(
+                    'POST',
+                    '/de-bff/emergency/activate',
+                    [],
+                    self::activateToken($kernel),
+                )),
+                'status' => 422,
+                'code' => 'missing_medical_profile',
+                'key' => 'missing_medical_profile',
+            ],
+            'missing_emergency_contacts' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(
+                    self::clientWithProfile(['full_name' => 'Ada Lovelace'], false)
+                ),
+                'request' => static fn (Kernel $kernel): Response => $kernel->handle(self::json(
+                    'POST',
+                    '/de-bff/emergency/activate',
+                    [],
+                    self::activateToken($kernel),
+                )),
+                'status' => 422,
+                'code' => 'missing_emergency_contacts',
+                'key' => 'missing_emergency_contacts',
+            ],
+            'rate_limited' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(
+                    null,
+                    new RateLimiter(new InMemorySessionStore(), limit: 1, windowSeconds: 60),
+                ),
+                'request' => static function (Kernel $kernel): Response {
+                    $kernel->handle(new Request('GET', '/de-bff/emergency/health'));
+
+                    return $kernel->handle(new Request('GET', '/de-bff/emergency/health'));
+                },
+                'status' => 429,
+                'code' => 'rate_limited',
+                'key' => 'rate_limited',
+            ],
+            'internal_error' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(self::clientWithUnexpectedFailure()),
+                'request' => static fn (Kernel $kernel): Response => $kernel->handle(self::json(
+                    'POST',
+                    '/de-bff/emergency/session',
+                    ['code' => 'DABC12'],
+                    self::tokenFor($kernel),
+                )),
+                'status' => 500,
+                'code' => 'internal_error',
+                'key' => 'internal_error',
+            ],
+            'emergency_error' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(self::clientWithFailingProfile()),
+                'request' => static fn (Kernel $kernel): Response => $kernel->handle(self::json(
+                    'POST',
+                    '/de-bff/emergency/activate',
+                    [],
+                    self::activateToken($kernel),
+                )),
+                'status' => 500,
+                'code' => 'emergency_error',
+                'key' => 'emergency_error',
+            ],
+            'upstream_error' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(self::clientWithFailingExistence()),
+                'request' => static fn (Kernel $kernel): Response => $kernel->handle(self::json(
+                    'POST',
+                    '/de-bff/emergency/session',
+                    ['code' => 'DABC12'],
+                    self::tokenFor($kernel),
+                )),
+                'status' => 502,
+                'code' => 'upstream_error',
+                'key' => 'upstream_error',
+            ],
+            'whatsapp_delivery_failed' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(self::clientWithUndeliveredSend()),
+                'request' => static fn (Kernel $kernel): Response => $kernel->handle(self::json(
+                    'POST',
+                    '/de-bff/emergency/activate',
+                    [],
+                    self::activateToken($kernel),
+                )),
+                'status' => 502,
+                'code' => 'whatsapp_delivery_failed',
+                'key' => 'whatsapp_delivery_failed',
+            ],
+            'insufficient_credits' => [
+                'kernelFactory' => static fn (): Kernel => self::makeKernel(self::clientWithInsufficientCredits()),
+                'request' => static fn (Kernel $kernel): Response => $kernel->handle(self::json(
+                    'POST',
+                    '/de-bff/emergency/activate',
+                    [],
+                    self::activateToken($kernel),
+                )),
+                'status' => 402,
+                'code' => 'insufficient_credits',
+                'key' => 'insufficient_credits',
+            ],
+        ];
+    }
+
+    private static function startSession(Kernel $kernel, string $code = 'DABC12'): string
+    {
+        $token = self::tokenFor($kernel);
+        $response = $kernel->handle(self::json('POST', '/de-bff/emergency/session', ['code' => $code], $token));
+
+        self::assertSame(201, $response->status());
+
+        return (string) $response->body()['csrf_token'];
+    }
+
+    private static function activateToken(Kernel $kernel): string
+    {
+        return self::startSession($kernel);
+    }
+
+    private static function clientWithActiveEmergency(string $emergencyId): FakeApiClient
+    {
+        return new FakeApiClient(function (string $method, string $path) use ($emergencyId): ApiResponse {
+            if ($method === 'GET' && str_ends_with($path, '/exists')) {
+                return new ApiResponse(200, ['data' => ['attributes' => ['exists' => true]]]);
+            }
+
+            if ($method === 'GET' && str_contains($path, '/active')) {
+                return new ApiResponse(200, ['data' => ['attributes' => ['emergency_id' => $emergencyId]]]);
+            }
+
+            throw new \RuntimeException("Unexpected request: {$method} {$path}");
+        });
+    }
+
+    private static function clientWithoutEmergency(): FakeApiClient
+    {
+        return new FakeApiClient(function (string $method, string $path): ApiResponse {
+            if ($method === 'GET' && str_ends_with($path, '/exists')) {
+                return new ApiResponse(200, ['data' => ['attributes' => ['exists' => true]]]);
+            }
+
+            if ($method === 'GET' && str_starts_with($path, '/v2/emergency/')) {
+                throw ApiException::fromResponse(new ApiResponse(404));
+            }
+
+            throw new \RuntimeException("Unexpected request: {$method} {$path}");
+        });
+    }
+
+    private static function clientWithProfile(array $personalInfo, bool $withContacts = true): FakeApiClient
+    {
+        $profile = self::fixture('responses/success.json');
+        $profile['data']['attributes']['data']['personal_info'] = $personalInfo;
+
+        if (! $withContacts) {
+            $profile['data']['attributes']['data']['emergency_info'] = [];
+        }
+
+        return new FakeApiClient(function (string $method, string $path) use ($profile): ApiResponse {
+            if ($method === 'GET' && str_ends_with($path, '/exists')) {
+                return new ApiResponse(200, ['data' => ['attributes' => ['exists' => true]]]);
+            }
+
+            if ($method === 'GET' && str_contains($path, 'models/data')) {
+                return new ApiResponse(200, $profile);
+            }
+
+            if ($method === 'GET' && str_contains($path, '/active')) {
+                throw ApiException::fromResponse(new ApiResponse(404));
+            }
+
+            throw new \RuntimeException("Unexpected request: {$method} {$path}");
+        });
+    }
+
+    private static function clientWithFailingProfile(): FakeApiClient
+    {
+        return new FakeApiClient(function (string $method, string $path): ApiResponse {
+            if ($method === 'GET' && str_ends_with($path, '/exists')) {
+                return new ApiResponse(200, ['data' => ['attributes' => ['exists' => true]]]);
+            }
+
+            if ($method === 'GET' && str_contains($path, 'models/data')) {
+                throw ApiException::fromResponse(new ApiResponse(503, ['message' => 'Unavailable']));
+            }
+
+            if ($method === 'GET' && str_contains($path, '/active')) {
+                throw ApiException::fromResponse(new ApiResponse(404));
+            }
+
+            throw new \RuntimeException("Unexpected request: {$method} {$path}");
+        });
+    }
+
+    private static function clientWithFailingExistence(): FakeApiClient
+    {
+        return new FakeApiClient(function (string $method, string $path): ApiResponse {
+            if ($method === 'GET' && str_ends_with($path, '/exists')) {
+                throw ApiException::fromResponse(new ApiResponse(503, ['message' => 'Unavailable']));
+            }
+
+            throw new \RuntimeException("Unexpected request: {$method} {$path}");
+        });
+    }
+
+    private static function clientWithUnexpectedFailure(): FakeApiClient
+    {
+        return new FakeApiClient(static function (string $method, string $path): ApiResponse {
+            throw new \RuntimeException("Unexpected request: {$method} {$path}");
+        });
+    }
+
+    private static function clientWithUndeliveredSend(): FakeApiClient
+    {
+        $send = self::fixture('responses/typed-send.json');
+        $send['data']['attributes']['data']['results'][0]['whatsapp_message_id'] = 42;
+
+        return new FakeApiClient(function (string $method, string $path) use ($send): ApiResponse {
+            if ($method === 'GET' && str_ends_with($path, '/exists')) {
+                return new ApiResponse(200, ['data' => ['attributes' => ['exists' => true]]]);
+            }
+
+            if ($method === 'GET' && str_contains($path, 'models/data')) {
+                return new ApiResponse(200, self::fixture('responses/success.json'));
+            }
+
+            if ($method === 'GET' && str_contains($path, '/active')) {
+                throw ApiException::fromResponse(new ApiResponse(404));
+            }
+
+            if ($method === 'POST' && $path === '/v2/emergency') {
+                return new ApiResponse(201, [
+                    'data' => ['attributes' => ['emergency_id' => 'EMG1', 'is_active' => true]],
+                ]);
+            }
+
+            if ($method === 'POST' && str_contains($path, 'whatsapp/templates/emergency/')) {
+                return new ApiResponse(200, $send);
+            }
+
+            if ($method === 'DELETE' && str_starts_with($path, '/v2/emergency/')) {
+                return new ApiResponse(204);
+            }
+
+            throw new \RuntimeException("Unexpected request: {$method} {$path}");
+        });
+    }
+
+    private static function clientWithInsufficientCredits(): FakeApiClient
+    {
+        $credits = self::fixture('responses/insufficient-credits.json');
+
+        return new FakeApiClient(function (string $method, string $path) use ($credits): ApiResponse {
+            if ($method === 'GET' && str_ends_with($path, '/exists')) {
+                return new ApiResponse(200, ['data' => ['attributes' => ['exists' => true]]]);
+            }
+
+            if ($method === 'GET' && str_contains($path, 'models/data')) {
+                return new ApiResponse(200, self::fixture('responses/success.json'));
+            }
+
+            if ($method === 'GET' && str_contains($path, '/active')) {
+                throw ApiException::fromResponse(new ApiResponse(404));
+            }
+
+            if ($method === 'POST' && $path === '/v2/emergency') {
+                return new ApiResponse(201, [
+                    'data' => ['attributes' => ['emergency_id' => 'EMG1', 'is_active' => true]],
+                ]);
+            }
+
+            if ($method === 'POST' && str_contains($path, 'whatsapp/templates/emergency/')) {
+                throw ApiException::fromResponse(new ApiResponse(402, $credits));
+            }
+
+            if ($method === 'DELETE' && str_starts_with($path, '/v2/emergency/')) {
+                return new ApiResponse(204);
+            }
+
+            throw new \RuntimeException("Unexpected request: {$method} {$path}");
+        });
     }
 
     public static function emergencyIdProvider(): array
@@ -642,6 +1213,11 @@ final class KernelTest extends TestCase
 
     private function csrfToken(Kernel $kernel): string
     {
+        return self::tokenFor($kernel);
+    }
+
+    private static function tokenFor(Kernel $kernel): string
+    {
         $response = $kernel->handle(new Request('GET', '/de-bff/emergency/config'));
         $token = $response->body()['csrf_token'];
 
@@ -653,7 +1229,7 @@ final class KernelTest extends TestCase
     /**
      * @param array<string, mixed> $body
      */
-    private function json(string $method, string $path, array $body, ?string $token = null): Request
+    private static function json(string $method, string $path, array $body, ?string $token = null): Request
     {
         $headers = ['content-type' => 'application/json'];
 
@@ -669,8 +1245,61 @@ final class KernelTest extends TestCase
         ?RateLimiter $limiter = null,
         string|int $emergencyId = 'EMG1',
     ): Kernel {
+        $client ??= self::defaultClient($emergencyId);
+
+        $this->client = $client;
+
+        return self::buildKernel($this->store, $this->config, $client, $limiter);
+    }
+
+    /**
+     * Builds a kernel with its own session store, for isolated scenarios.
+     */
+    private static function makeKernel(
+        ?FakeApiClient $client = null,
+        ?RateLimiter $limiter = null,
+        string|int $emergencyId = 'EMG1',
+    ): Kernel {
+        $client ??= self::defaultClient($emergencyId);
+
+        return self::buildKernel(
+            new InMemorySessionStore(),
+            new Config(apiKey: 'api-key', applicationIdentifier: 'app-id'),
+            $client,
+            $limiter,
+        );
+    }
+
+    private static function buildKernel(
+        InMemorySessionStore $store,
+        Config $config,
+        FakeApiClient $client,
+        ?RateLimiter $limiter = null,
+    ): Kernel {
+        $session = new SessionManager($store, 3600);
+        $service = new EmergencyService(
+            profiles: new ProfileRepository($client),
+            responders: new ResponderFactory(),
+            payloads: new WhatsAppPayloadBuilder(),
+            whatsApp: new WhatsAppClient($client),
+            emergencies: new EmergencyRepository($client),
+        );
+
+        return new Kernel(
+            config: $config,
+            session: $session,
+            validator: new CodeValidator($client),
+            emergency: $service,
+            credits: new CreditRepository($client),
+            limiter: $limiter,
+        );
+    }
+
+    private static function defaultClient(string|int $emergencyId = 'EMG1'): FakeApiClient
+    {
         $active = null;
-        $client ??= new FakeApiClient(function (string $method, string $path, ?array $body) use (&$active, $emergencyId): ApiResponse {
+
+        return new FakeApiClient(function (string $method, string $path, ?array $body) use (&$active, $emergencyId): ApiResponse {
             if ($method === 'GET' && str_ends_with($path, '/exists')) {
                 return str_contains($path, 'DABC12') || str_contains($path, 'A12345')
                     ? new ApiResponse(200, ['data' => ['attributes' => ['exists' => true]]])
@@ -678,15 +1307,15 @@ final class KernelTest extends TestCase
             }
 
             if ($method === 'GET' && str_contains($path, '/credits/') && str_contains($path, '/history')) {
-                return new ApiResponse(200, $this->fixture('responses/credit-history.json'));
+                return new ApiResponse(200, self::fixture('responses/credit-history.json'));
             }
 
             if ($method === 'GET' && preg_match('#/v2/credits/[^/]+$#', $path) === 1) {
-                return new ApiResponse(200, $this->fixture('responses/credits.json'));
+                return new ApiResponse(200, self::fixture('responses/credits.json'));
             }
 
             if ($method === 'GET' && str_contains($path, 'models/data')) {
-                return new ApiResponse(200, $this->fixture('responses/success.json'));
+                return new ApiResponse(200, self::fixture('responses/success.json'));
             }
 
             if ($method === 'GET' && str_contains($path, '/active')) {
@@ -696,11 +1325,11 @@ final class KernelTest extends TestCase
             }
 
             if ($method === 'POST' && str_contains($path, 'whatsapp/templates/emergency/')) {
-                return new ApiResponse(200, $this->fixture('responses/typed-send.json'));
+                return new ApiResponse(200, self::fixture('responses/typed-send.json'));
             }
 
             if ($method === 'POST' && str_contains($path, 'whatsapp/templates/send')) {
-                return new ApiResponse(200, $this->fixture('responses/send-success.json'));
+                return new ApiResponse(200, self::fixture('responses/send-success.json'));
             }
 
             if ($method === 'POST' && $path === '/v2/emergency') {
@@ -751,7 +1380,7 @@ final class KernelTest extends TestCase
                 return new ApiResponse(200, ['data' => ['attributes' => $active]]);
             }
 
-            if ($method === 'GET' && $path === '/v2/emergency/'.$emergencyId) {
+            if ($method === 'GET' && $path === "/v2/emergency/{$emergencyId}") {
                 return new ApiResponse(200, ['data' => ['attributes' => $active ?? ['emergency_id' => $emergencyId]]]);
             }
 
@@ -761,27 +1390,7 @@ final class KernelTest extends TestCase
                 return new ApiResponse(204);
             }
 
-            throw new \RuntimeException('Unexpected request: '.$method.' '.$path);
+            throw new \RuntimeException("Unexpected request: {$method} {$path}");
         });
-
-        $this->client = $client;
-
-        $session = new SessionManager($this->store, 3600);
-        $service = new EmergencyService(
-            profiles: new ProfileRepository($client),
-            responders: new ResponderFactory(),
-            payloads: new WhatsAppPayloadBuilder(),
-            whatsApp: new WhatsAppClient($client),
-            emergencies: new EmergencyRepository($client),
-        );
-
-        return new Kernel(
-            config: $this->config,
-            session: $session,
-            validator: new CodeValidator($client),
-            emergency: $service,
-            credits: new CreditRepository($client),
-            limiter: $limiter,
-        );
     }
 }

@@ -1,75 +1,54 @@
 # Versioning
 
-The package follows Semantic Versioning. Versions are derived from Git tags in
-the form `vX.Y.Z`; `composer.json` deliberately has no `version` field.
+The package follows Semantic Versioning. Versions derive from Git tags in the
+form `vX.Y.Z`; `composer.json` deliberately has no `version` field.
 
-## Semantic versioning
+## What each change means
 
-Before `1.0.0`, the package follows the usual pre-1.0 convention:
+| Change                                                                | Version                  |
+| --------------------------------------------------------------------- | ------------------------ |
+| Bug fix, documentation, hardening without a contract change           | patch                    |
+| Additive feature, new optional field, new route                       | minor                    |
+| Breaking change to routes, request/response shapes or cookie behavior | minor (pre-1.0) or major |
 
-| Change                                                                | Version                                 |
-| --------------------------------------------------------------------- | --------------------------------------- |
-| Bug fix, documentation, security hardening without API change         | patch                                   |
-| Additive feature, new optional field, new route                       | minor                                   |
-| Breaking change to routes, request/response shapes or cookie behavior | minor (pre-1.0) or major (from `1.0.0`) |
-
-Once the package reaches `1.0.0`, a breaking change requires a major version.
-
-Adding a new field to a JSON response is not breaking. Removing a field,
-renaming a field, changing a status code, changing an error `code` or changing
-the meaning of an existing field is breaking.
+Adding a response field is not breaking. Removing or renaming a field, changing
+a status code, changing an error `code` or changing the meaning of an existing
+field is breaking.
 
 ## Tags
 
-Release tags use `vX.Y.Z`, for example `v0.1.0`. Packagist normalises the
-leading `v` and exposes the version as `0.1.0`.
+Release tags use `vX.Y.Z`, for example `v0.5.0`. Packagist normalizes the
+leading `v` and exposes `0.5.0`.
 
 The tag is created in the monorepo with a project-scoped prefix and mirrored to
 the split repository without it:
 
 | Monorepo tag           | Split / Packagist tag |
 | ---------------------- | --------------------- |
-| `emergency-bff-v0.1.3` | `v0.1.3`              |
+| `emergency-bff-v0.5.1` | `v0.5.1`              |
 
-The prefix keeps several packages releasable from one monorepo: only
-`emergency-bff-v*` starts the BFF split workflow. The old `php-v*` prefix is
-historical and must not be reused.
+Only `emergency-bff-v*` starts the BFF split workflow, which lets several
+packages be released from one monorepo. The old `php-v*` prefix is historical
+and must not be reused.
 
-| Release | Tag      | Composer constraint |
-| ------- | -------- | ------------------- |
-| `0.1.0` | `v0.1.0` | `^0.1`              |
-| `0.1.1` | `v0.1.1` | `^0.1`              |
-| `0.2.0` | `v0.2.0` | `^0.2`              |
-
-For pre-1.0 releases, `^0.1` allows `0.1.x` but not `0.2.0`. That is the
-intended behaviour while the contract is still stabilising.
+For pre-1.0 releases, `^0.5` allows `0.5.x` but not `0.6.0`. That is intended
+while the contract is still stabilizing.
 
 ## Deprecation
 
 - Announce a deprecation at least one minor release before removal.
-- Document the replacement in the changelog and in the affected page.
-- Keep the old behaviour working during the deprecation window.
+- Keep the old behavior working during the window.
+- Document the replacement in the changelog and on the affected page.
 - Remove it in the next minor (pre-1.0) or major release.
-
-Deprecated HTTP fields remain accepted until the announced removal.
 
 ## Changelog
 
 `CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/):
-
-- `Unreleased` collects changes before a release.
-- Each release has a dated heading and `Added`, `Changed`, `Deprecated`,
-  `Removed`, `Fixed` and `Security` sections as needed.
-- The changelog ships with the package.
-
-## Documentation versioning
-
-Documentation ships with the package version it describes. When behaviour
-changes, update the docs in the same change. Version-specific statements name
-the version, for example "since 0.2.0".
+`Unreleased` collects changes, each release has a dated heading, and sections
+use `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed` and `Security`.
 
 ## Related
 
 - [Releasing the BFF](releasing.md)
 - [Upgrade guide](../bff/upgrade.md)
-- [API contract](../api-contract.md)
+- [Documentation standard](../contributing/documentation.md)

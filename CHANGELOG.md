@@ -6,6 +6,44 @@ and [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-20
+
+### Changed
+
+- Internal array reads now go through `Support\ArrayReader`, a framework-free
+  dot-path reader with `array_key_exists` semantics. The public HTTP contract,
+  response shapes and error mappings are unchanged; opaque idempotency keys
+  stay on literal lookups.
+- Every consumer-facing message is now Spanish: `error.message` and
+  `failures[].message`. The envelope, status codes, error codes, field names
+  and `details` keys are unchanged and stay English machine values. Clients
+  must branch on `error.code`, never on the message text.
+- The `502 upstream_error` envelope no longer forwards the upstream error
+  message; it keeps only `details.status` and `details.upstream_code`.
+- The `details.operation` value of an upstream failure is now a stable machine
+  key (`create_emergency`, `update_emergency`, `show_emergency`,
+  `delete_emergency`, `find_active_emergency`, `fetch_medical_profile`)
+  instead of an English phrase.
+- WhatsApp failures no longer copy the upstream message or upstream details
+  into the failure entry; they report the Spanish copy for the failure and keep
+  the upstream status. A `402` is read as a credits failure only when the
+  upstream error code is the canonical `INSUFFICIENT_CREDITS`.
+- `InsufficientCreditsException` no longer accepts an upstream message: it now
+  takes the code only, and its message is English.
+
+### Added
+
+- `ClientMessages`, the single catalog of Spanish client copy used by the
+  kernel, the WhatsApp client and the emergency service.
+
+### Removed
+
+- The unused `qrBaseHost`, `fallbackOriginUrl` and `local` properties are gone
+  from `Config`, along with the `EMERGENCY_BFF_QR_BASE_HOST`,
+  `EMERGENCY_BFF_FALLBACK_ORIGIN_URL` and `EMERGENCY_BFF_LOCAL` environment
+  variables. Nothing in the package read them; the Laravel reference no longer
+  passes them to `WhatsAppPayloadBuilder`.
+
 ## [0.5.0] - 2026-11-17
 
 ### Added

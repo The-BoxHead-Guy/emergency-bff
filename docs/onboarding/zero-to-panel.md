@@ -1,178 +1,130 @@
 # Zero to panel
 
-This guide takes a developer from an empty directory to a working emergency
-flow. It is deliberately linear: complete each step before moving to the next
-one.
+Applies to: developers integrating the BFF for the first time.
 
-If you only want to see the flow work on your machine first, use the mock
-upstream in [Examples](../examples.md). The mock needs no credentials and sends no
-real WhatsApp messages.
+This guide goes from an empty directory to a working emergency flow. If you only
+want to see the flow run locally, skip to
+[run the demo](#5-run-the-flow-offline).
+
+## What you are building
+
+| Piece                                                           | Owner                       |
+| --------------------------------------------------------------- | --------------------------- |
+| Landing page, QR entry, branding, legal copy                    | Your application            |
+| Accounts, consent, operator tooling                             | Your application            |
+| Front controller, web server, PHP-FPM, session storage          | Your application            |
+| Code validation, session binding, CSRF, same-origin, rate limit | BFF                         |
+| WhatsApp payload selection and per-contact fan-out              | BFF                         |
+| Emergency create, read, refresh, abort                          | BFF                         |
+| API credentials and upstream calls                              | BFF (server-side only)      |
+| SOS panel UI and browser state                                  | `@dataemergencia/emergency` |
+
+The browser talks only to the BFF. It never sees the DataEmergencia API key, the
+application identifier or an upstream token.
 
 ## Before you start
 
-You need:
+- PHP 8.4 or newer
+- Composer 2.x
+- An API key and application identifier issued by DataEmergencia
+- A host that can share a location over HTTPS, or `localhost` for testing
 
-- PHP 8.4 or newer with `curl`, `json` and `mbstring`.
-- Composer 2.
-- A DataEmergencia API key and application identifier.
-- A phone or browser that can share a location over HTTPS (or `localhost`).
+The flow sends real WhatsApp messages in production. Test with codes and phone
+numbers your team controls.
 
-The emergency flow sends real WhatsApp messages in production mode. Test with
-codes and phone numbers that your team controls.
-
-## 1. Install the BFF
+## 1. Install the package
 
 ```bash
-mkdir emergency-demo && cd emergency-demo
-composer require dataemergencia/emergency-bff:^0.1
+composer require dataemergencia/emergency-bff
 ```
-
-Confirm the package is installed:
-
-```bash
-composer show dataemergencia/emergency-bff
-```
-
-Expected result: the package name, version `0.1.x`, and its Guzzle/PSR
-dependencies.
 
 ## 2. Create the front controller
 
-Create `public/index.php`:
+The package is a library, not an application. It ships `public/index.php` as the
+reference front controller; copy it, or mount the kernel yourself:
 
 ```php
-<?php
-
-declare(strict_types=1);
-
-require __DIR__.'/../vendor/autoload.php';
-
 use DataEmergencia\EmergencyBff\Http\Request;
 use DataEmergencia\EmergencyBff\Support\Bootstrap;
 
 Bootstrap::create()->handle(Request::fromGlobals())->send();
 ```
 
-The BFF is a library, not an application. Your front controller owns the
-environment, the document root and the web server. There are no assets to
-publish and no migrations to run.
+Point the document root at the directory that contains that file and forward
+every path under the route prefix to it. Never expose `src/`, `vendor/` or
+`examples/` over HTTP.
 
-## 3. Configure the environment
+If you embed the kernel in an existing application, read
+[Session and CSRF](../bff/session-and-csrf.md) first: the BFF owns its session
+and must not share yours.
 
-Set these variables in the process that runs PHP-FPM or the PHP built-in
-server:
+## 3. Configure the credentials
 
 ```bash
 export EMERGENCY_BFF_API_KEY="your-api-key"
 export EMERGENCY_BFF_APPLICATION_IDENTIFIER="your-application-identifier"
-export EMERGENCY_BFF_COOKIE_SECURE="true"
 ```
 
-The two credentials have no defaults. If either is missing,
-`Bootstrap::create()` throws a `ConfigurationException` before serving a
-request.
-
-Full reference: [BFF configuration](../bff/configuration.md).
+Both are required and have no defaults; the bootstrap fails before serving a
+request if either is missing. The remaining settings have safe defaults and are
+listed in [Configuration](../bff/configuration.md).
 
 ## 4. Serve and check health
-
-For a local check with the built-in server:
 
 ```bash
 php -S 127.0.0.1:8080 -t public public/index.php
 ```
 
-In another terminal:
-
 ```bash
 curl -sS http://127.0.0.1:8080/de-bff/emergency/health
 ```
-
-Expected response:
 
 ```json
 { "status": "ok", "service": "dataemergencia/emergency-bff" }
 ```
 
 If this fails, check the route prefix and the front controller before
-continuing.
+continuing. A framework-generated 404 means the request never reached the BFF.
 
-## 5. Start a session
+## 5. Run the flow offline
 
-The BFF stores the identity code in the PHP session. Every browser call must
-use the same cookie jar and the same origin.
-
-```bash
-curl -sS -c cookies.txt \
-  http://127.0.0.1:8080/de-bff/emergency/config
-```
-
-Copy the `csrf_token` value from the response, then:
+`examples/vanilla-php` is a complete host with a mock upstream. It needs no
+credentials and sends no real messages:
 
 ```bash
-curl -sS -b cookies.txt -c cookies.txt \
-  -H "Content-Type: application/json" \
-  -H "X-CSRF-Token: <csrf_token>" \
-  -d '{"code":"DABC12"}' \
-  http://127.0.0.1:8080/de-bff/emergency/session
+cd examples/vanilla-php
+./demo.sh
 ```
 
-Expected status: `201`. The response contains a new `csrf_token`; use that
-token for the remaining write requests. A `422 invalid_code` means the format
-is wrong, `404 inactive_code` means the code does not exist upstream.
+`demo.sh` installs dependencies, starts the mock API and the BFF, runs the
+end-to-end smoke test (`smoke.sh`) and leaves a browser demo at
+<http://127.0.0.1:8080>. Use it to see the exact request and response shapes.
 
-The code format is six characters: a letter followed by five letters or
-digits.
+The demo codes are `DABC12` (valid), `ZZZZZZ` (inactive) and `bad` (malformed).
+`ZERO12` has no credits and returns `402 insufficient_credits` on activation.
 
 ## 6. Connect the browser panel
 
-The browser panel is the recommended library
-[`@dataemergencia/emergency`](https://github.com/The-BoxHead-Guy/emergency). It
-talks to this backend over the routes above.
+The panel is the separate
+[`@dataemergencia/emergency`](https://github.com/The-BoxHead-Guy/emergency)
+library. Mount it on the same origin as the BFF and point it at the route prefix
+(`http://127.0.0.1:8080/de-bff/emergency` in the example). Cross-origin mounts
+are rejected by design.
 
-Point the panel at the route prefix (for example
-`http://127.0.0.1:8080/de-bff/emergency`) and serve it from the same origin as
-the BFF. Cross-origin requests are rejected.
+The library owns geolocation, the SOS interaction and the fallback phone number.
+Its mount options are documented in its own repository.
 
-See the [client quickstart](https://github.com/The-BoxHead-Guy/emergency#readme)
-for the mount options.
+## 7. Verify a real deployment
 
-## 7. Activate and verify
+1. Start a session with a test code and confirm `GET /current` returns
+   `active: false`.
+2. Activate and confirm a test contact receives the message.
+3. Refresh and confirm the responder statuses.
+4. Abort and confirm `GET /current` returns `active: false` again.
 
-Open the panel from the same origin as the BFF and press **SOS**.
+## Next
 
-1. The browser asks for location permission. Allow it, or use the fallback
-   phone link if permission is denied.
-2. The panel calls `POST /de-bff/emergency/activate`.
-3. The BFF contacts the upstream API, sends the WhatsApp templates and creates
-   the emergency.
-4. The panel shows the responder list and delivery statuses.
-
-Verify the emergency exists:
-
-```bash
-curl -sS -b cookies.txt \
-  http://127.0.0.1:8080/de-bff/emergency/current
-```
-
-Expected: `"active": true` and an `emergency.emergency_id`.
-
-## 8. Cancel the test emergency
-
-```bash
-curl -sS -b cookies.txt \
-  -H "X-CSRF-Token: <csrf_token>" \
-  -X DELETE \
-  http://127.0.0.1:8080/de-bff/emergency/<emergency_id>
-```
-
-The BFF sends the abort WhatsApp message and deletes the upstream state.
-`GET /current` should return `"active": false`.
-
-## What to do next
-
-- Run the packaged example: [Vanilla PHP example](../examples.md#vanilla-php-primary).
-- Read every request and response: [API contract](../api-contract.md).
-- Deploy behind Apache or Nginx: [Deployment](../bff/deployment.md).
-- Integrate with an existing Laravel application: [Examples](../examples.md).
-- Investigate a failure: [Troubleshooting](../operations/troubleshooting.md).
+- [Examples](examples.md) for the Laravel reference and the API collection.
+- [HTTP contract](../bff/routes.md) for every route, field and error code.
+- [Activation flow](../bff/activation-flow.md) for the order and failure paths.
+- [Troubleshooting](../operations/troubleshooting.md) when a step fails.

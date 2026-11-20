@@ -5,9 +5,13 @@ declare(strict_types=1);
 namespace DataEmergencia\EmergencyBff\Tests\Unit;
 
 use DataEmergencia\EmergencyBff\Api\WhatsAppClient;
+use DataEmergencia\EmergencyBff\Emergency\Exception\WhatsAppFailureException;
+use DataEmergencia\EmergencyBff\Http\ApiException;
 use DataEmergencia\EmergencyBff\Http\ApiResponse;
+use DataEmergencia\EmergencyBff\Http\ClientMessages;
 use DataEmergencia\EmergencyBff\Tests\Support\FakeApiClient;
 use DataEmergencia\EmergencyBff\Tests\TestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 final class WhatsAppClientTest extends TestCase
 {
@@ -100,5 +104,118 @@ final class WhatsAppClientTest extends TestCase
 
         self::assertFalse($result->success);
         self::assertNull($result->messageId());
+        self::assertSame(
+            ClientMessages::message(ClientMessages::FAILURE_RESULT_MISSING),
+            $result->error['message']
+        );
+    }
+
+    public function test_a_failed_result_reports_the_delivery_copy(): void
+    {
+        $body = $this->fixture('responses/typed-send.json');
+        $body['data']['attributes']['data']['results'][0]['status'] = 'failed';
+        $body['data']['attributes']['data']['results'][0]['whatsapp_message_id'] = null;
+
+        $api = new FakeApiClient(fn (): ApiResponse => new ApiResponse(200, $body));
+        $client = new WhatsAppClient($api);
+
+        $result = $client->sendActivation('573001234567', [
+            'user_name' => 'Ada Lovelace',
+            'emergency_code' => 'EMG1',
+        ], 'EMG1');
+
+        self::assertFalse($result->success);
+        self::assertSame(
+            ClientMessages::message(ClientMessages::FAILURE_NOT_DELIVERED),
+            $result->error['message']
+        );
+        self::assertSame('failed', $result->error['status']);
+    }
+
+    #[DataProvider('failureProvider')]
+    public function test_an_upstream_failure_reports_the_catalog_copy(
+        ApiException $exception,
+        string $expectedKey,
+        int $expectedStatus
+    ): void {
+        $api = new FakeApiClient(static fn (): ApiResponse => throw $exception);
+        $client = new WhatsAppClient($api);
+
+        $result = $client->sendActivation('573001234567', [
+            'user_name' => 'Ada Lovelace',
+            'emergency_code' => 'EMG1',
+        ], 'EMG1');
+
+        self::assertFalse($result->success);
+        self::assertTrue(ClientMessages::has($expectedKey));
+        self::assertSame(ClientMessages::message($expectedKey), $result->error['message']);
+        self::assertSame($expectedStatus, $result->status);
+        self::assertStringNotContainsString('Unavailable', json_encode($result->error, JSON_THROW_ON_ERROR));
+        self::assertStringNotContainsString('cURL error', json_encode($result->error, JSON_THROW_ON_ERROR));
+    }
+
+    #[DataProvider('failureProvider')]
+    public function test_an_upstream_failure_reports_the_catalog_copy_on_the_legacy_path(
+        ApiException $exception,
+        string $expectedKey,
+        int $expectedStatus
+    ): void {
+        $api = new FakeApiClient(static fn (): ApiResponse => throw $exception);
+        $client = new WhatsAppClient($api);
+
+        $result = $client->send(['template' => 'emergency_status_aborting_v1']);
+
+        self::assertFalse($result->success);
+        self::assertTrue(ClientMessages::has($expectedKey));
+        self::assertSame(ClientMessages::message($expectedKey), $result->error['message']);
+        self::assertSame($expectedStatus, $result->status);
+        self::assertArrayNotHasKey('details', $result->error);
+    }
+
+    public function test_the_internal_exception_messages_stay_in_english(): void
+    {
+        $apiException = ApiException::fromResponse(new ApiResponse(503, ['message' => 'Unavailable']));
+
+        self::assertSame('Unavailable', $apiException->getMessage());
+
+        $failure = new WhatsAppFailureException([]);
+
+        self::assertSame('No WhatsApp template message could be delivered.', $failure->getMessage());
+    }
+
+    /**
+     * @return array<string, array{ApiException, string, int}>
+     */
+    public static function failureProvider(): array
+    {
+        return [
+            'insufficient credits' => [
+                ApiException::fromResponse(new ApiResponse(402, [
+                    'errors' => [['code' => 'INSUFFICIENT_CREDITS', 'detail' => 'Unavailable']],
+                ])),
+                ClientMessages::FAILURE_INSUFFICIENT_CREDITS,
+                402,
+            ],
+            'rate limited' => [
+                ApiException::fromResponse(new ApiResponse(429, ['message' => 'Unavailable'])),
+                ClientMessages::FAILURE_RATE_LIMITED,
+                429,
+            ],
+            'transport' => [
+                ApiException::transport('cURL error 28: Operation timed out'),
+                ClientMessages::FAILURE_TRANSPORT,
+                0,
+            ],
+            'payment required without the canonical upstream code' => [
+                ApiException::fromResponse(new ApiResponse(402, ['code' => 'PAYMENT_REQUIRED', 'message' => 'Unavailable'])),
+                ClientMessages::FAILURE_SEND_FAILED,
+                402,
+            ],
+            'server error' => [
+                ApiException::fromResponse(new ApiResponse(500, ['message' => 'Unavailable'])),
+                ClientMessages::FAILURE_SEND_FAILED,
+                500,
+            ],
+        ];
     }
 }

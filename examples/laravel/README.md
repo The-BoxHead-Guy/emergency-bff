@@ -123,4 +123,4 @@ Mixing the two produces `403 csrf_failed`.
 
 - [Zero to panel](../../docs/onboarding/zero-to-panel.md)
 - [Session and CSRF](../../docs/bff/session-and-csrf.md)
-- [Examples](../../docs/examples.md)
+- [Examples](../../docs/onboarding/examples.md)

@@ -9,6 +9,7 @@ use DataEmergencia\EmergencyBff\Emergency\Exception\EmergencyNotFoundException;
 use DataEmergencia\EmergencyBff\Http\ApiClient;
 use DataEmergencia\EmergencyBff\Http\ApiException;
 use DataEmergencia\EmergencyBff\Http\Endpoints;
+use DataEmergencia\EmergencyBff\Support\ArrayReader;
 
 /**
  * Proxies the existing emergency state endpoints.
@@ -47,7 +48,7 @@ final class EmergencyRepository
         try {
             $response = $this->client->post(Endpoints::postState(), $payload);
         } catch (ApiException $exception) {
-            throw new ApiFailureException('creating the emergency', $exception->status(), $exception);
+            throw new ApiFailureException('create_emergency', $exception->status(), $exception);
         }
 
         return $this->normalize($response->body());
@@ -68,7 +69,7 @@ final class EmergencyRepository
                 'responders' => $responders,
             ]);
         } catch (ApiException $exception) {
-            throw new ApiFailureException('updating the emergency', $exception->status(), $exception);
+            throw new ApiFailureException('update_emergency', $exception->status(), $exception);
         }
 
         return $this->normalize($response->body());
@@ -86,7 +87,7 @@ final class EmergencyRepository
                 throw new EmergencyNotFoundException($emergencyId);
             }
 
-            throw new ApiFailureException('showing the emergency', $exception->status(), $exception);
+            throw new ApiFailureException('show_emergency', $exception->status(), $exception);
         }
 
         return $this->normalize($response->body());
@@ -101,7 +102,7 @@ final class EmergencyRepository
                 throw new EmergencyNotFoundException($emergencyId);
             }
 
-            throw new ApiFailureException('deleting the emergency', $exception->status(), $exception);
+            throw new ApiFailureException('delete_emergency', $exception->status(), $exception);
         }
 
         return true;
@@ -119,7 +120,7 @@ final class EmergencyRepository
                 return null;
             }
 
-            throw new ApiFailureException('finding the active emergency', $exception->status(), $exception);
+            throw new ApiFailureException('find_active_emergency', $exception->status(), $exception);
         }
 
         $normalized = $this->normalize($response->body());
@@ -133,13 +134,13 @@ final class EmergencyRepository
      */
     private function normalize(array $body): array
     {
-        $attributes = $body['data']['attributes'] ?? $body['attributes'] ?? null;
+        $attributes = ArrayReader::get($body, 'data.attributes') ?? ArrayReader::get($body, 'attributes');
 
         if (is_array($attributes)) {
             return $this->normalizeResponders($this->normalizeId($attributes));
         }
 
-        $data = $body['data'] ?? null;
+        $data = ArrayReader::get($body, 'data');
 
         return $this->normalizeResponders($this->normalizeId(is_array($data) ? $data : $body));
     }
@@ -151,11 +152,11 @@ final class EmergencyRepository
     private function normalizeId(array $shape): array
     {
         foreach (['emergency_id', 'id'] as $key) {
-            if (!array_key_exists($key, $shape)) {
+            if (!ArrayReader::has($shape, $key)) {
                 continue;
             }
 
-            $shape[$key] = $this->identifier($shape[$key]);
+            $shape[$key] = $this->identifier(ArrayReader::get($shape, $key));
         }
 
         return $shape;
@@ -167,7 +168,7 @@ final class EmergencyRepository
      */
     private function normalizeResponders(array $shape): array
     {
-        $responders = $shape['responders'] ?? null;
+        $responders = ArrayReader::get($shape, 'responders');
 
         if (!is_array($responders)) {
             return $shape;
@@ -178,7 +179,7 @@ final class EmergencyRepository
                 return $responder;
             }
 
-            $responder['message_id'] = $this->identifier($responder['message_id'] ?? null);
+            $responder['message_id'] = $this->identifier(ArrayReader::get($responder, 'message_id'));
 
             return $responder;
         }, $responders);

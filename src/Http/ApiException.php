@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace DataEmergencia\EmergencyBff\Http;
 
+use DataEmergencia\EmergencyBff\Support\ArrayReader;
 use RuntimeException;
 use Throwable;
 
@@ -29,10 +30,23 @@ final class ApiException extends RuntimeException
     public static function fromResponse(ApiResponse $response, string $operation = 'API request'): self
     {
         $body = $response->body();
-        $firstError = is_array($body['errors'][0] ?? null) ? $body['errors'][0] : [];
-        $errorCode = (string) ($body['code'] ?? $body['error']['code'] ?? $firstError['code'] ?? 'http_error');
-        $message = (string) ($body['message'] ?? $body['error']['message'] ?? $firstError['detail'] ?? sprintf('%s failed with status %d', $operation, $response->status()));
-        $details = $body['details'] ?? $body['errors'] ?? [];
+        $firstError = ArrayReader::get($body, 'errors.0');
+        $firstError = is_array($firstError) ? $firstError : [];
+        $errorCode = (string) (
+            ArrayReader::get($body, 'code')
+            ?? ArrayReader::get($body, 'error.code')
+            ?? ArrayReader::get($firstError, 'code')
+            ?? 'http_error'
+        );
+        $message = (string) (
+            ArrayReader::get($body, 'message')
+            ?? ArrayReader::get($body, 'error.message')
+            ?? ArrayReader::get($firstError, 'detail')
+            ?? sprintf('%s failed with status %d', $operation, $response->status())
+        );
+        $details = ArrayReader::get($body, 'details')
+            ?? ArrayReader::get($body, 'errors')
+            ?? [];
 
         return new self(
             $message,

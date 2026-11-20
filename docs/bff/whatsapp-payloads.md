@@ -1,143 +1,66 @@
 # WhatsApp payloads
 
-Applies to: maintainers and integrators diagnosing message content.
+Applies to: maintainers and integrators diagnosing message delivery.
 
-The BFF sends the recipient phone, the root `emergency_id` and the
-endpoint-specific `variables`. The upstream API owns the Meta template name,
-language, header image, date formatting, QR links and map data.
+The upstream API owns the Meta template: name, language, header image, date
+formatting, QR links and map data. The BFF only sends the recipient, the
+emergency id and the template variables.
 
-## Endpoints
+## Which endpoint is used
 
-| Scenario   | Endpoint                                           | Variables                                         |
-| ---------- | -------------------------------------------------- | ------------------------------------------------- |
-| Emergency  | `POST /v2/whatsapp/templates/emergency/activation` | `user_name`, `emergency_code`                     |
-| Simulation | `POST /v2/whatsapp/templates/emergency/simulacrum` | `contact_name`, `user_name`, `emergency_code`     |
-| Abort      | `POST /v2/whatsapp/templates/send`                 | Abort payload with `emergency_status_aborting_v1` |
+| Scenario   | Upstream endpoint                                  | Variables                                     |
+| ---------- | -------------------------------------------------- | --------------------------------------------- |
+| Emergency  | `POST /v2/whatsapp/templates/emergency/activation` | `user_name`, `emergency_code`                 |
+| Simulation | `POST /v2/whatsapp/templates/emergency/simulacrum` | `contact_name`, `user_name`, `emergency_code` |
+| Abort      | `POST /v2/whatsapp/templates/send`                 | `emergency_status_aborting_v1` template       |
 
-Activation and simulacrum no longer send a template name, language, components
-or `google_maps`. Abort uses the generic payload because no typed abort endpoint
-exists.
-
-## Emergency request
-
-```json
-{
-  "emergency_id": "EMG123456",
-  "recipients": [
-    {
-      "phone": "573001234567",
-      "variables": {
-        "user_name": "Ada Lovelace",
-        "emergency_code": "EMG123456"
-      }
-    }
-  ]
-}
-```
+Activation and simulation are billed per recipient. Abort uses the generic,
+unbilled endpoint because no typed abort endpoint exists. This is why a `402`
+blocks activation and simulation but never blocks abort.
 
 `emergency_code` is the upstream emergency id used as the URL button suffix, so
-the emergency must exist before the message is sent. The root `emergency_id`
-tells the API which emergency to load; the API charges the `initiator_id` from
-that record. The template never carries a CAA.
+the emergency must exist before the message is sent. The API resolves the
+`initiator_id` from that record and charges it.
 
-## Simulation request
-
-```json
-{
-  "emergency_id": "EMG123456",
-  "recipients": [
-    {
-      "phone": "573001234567",
-      "variables": {
-        "contact_name": "Grace Hopper",
-        "user_name": "Ada Lovelace",
-        "emergency_code": "EMG123456"
-      }
-    }
-  ]
-}
-```
-
-The simulation pre-creates an active simulated emergency only to obtain a valid
-`emergency_code` for its `/test` link. It stays active and the BFF does not
-update it.
-
-## Typed response
+## Response
 
 Both typed endpoints answer `200` even when an individual recipient fails:
 
 ```json
 {
   "data": {
-    "type": "whatsapp_template",
-    "id": "resource|…",
     "attributes": {
       "data": {
-        "event_type": "activation",
         "results": [
           {
             "phone": "573001234567",
             "status": "sent",
             "whatsapp_message_id": "wamid.HBgMNTg0MTIxMjM0NTY3FQIAERgS…"
           }
-        ],
-        "summary": { "total": 1, "sent": 1, "failed": 0 }
+        ]
       }
     }
   }
 }
 ```
 
-A send succeeds only when `data.attributes.data.results[0].status` is `sent` and
-`whatsapp_message_id` is a valid `wamid.`-prefixed value. A `200` with
-`status: failed` becomes a failed `MessageResult`, never a success.
+For both typed endpoints, a send succeeds only when `status` is `sent` and
+`whatsapp_message_id` is a non-empty string starting with `wamid.`. A numeric
+id, a bare `wamid.` or any other value resolves to `null`, and the BFF records
+the responder as failed. The HTTP status alone never proves delivery.
 
-## Abort payload
+The abort endpoint is the generic send and returns no typed result; a `2xx`
+there is treated as delivered.
 
-```json
-{
-  "to": "573001234567",
-  "template": "emergency_status_aborting_v1",
-  "language": "en",
-  "components": [
-    {
-      "type": "body",
-      "parameters": [
-        {
-          "type": "text",
-          "parameter_name": "user_name",
-          "text": "Ada Lovelace"
-        }
-      ]
-    }
-  ]
-}
-```
+## Recipient data
 
-## Phone formatting
+- The phone is the first entry in `phones[]`, concatenating `area_code` and
+  `number`, falling back to `recipientId`, `recipient_id` or `phone`.
+- A leading `+` is stripped. Nothing else is normalized: the country code and
+  digits must already be present. An empty phone is rejected upstream and
+  recorded as a failed contact.
+- `user_name` and `contact_name` are stripped of HTML tags and collapsed to
+  single spaces.
 
-`Responder::phoneFromContact()` chooses the number in this order:
-
-1. The first entry in `phones[]`, concatenating `area_code` and `number`.
-2. `recipientId`.
-3. `recipient_id`.
-4. `phone`.
-
-A leading `+` is stripped. No other normalization is applied: country code and
-digits must already be present. An empty result produces an empty `phone`, which
-the upstream API rejects; the BFF records that contact as failed.
-
-## Names
-
-`user_name` and `contact_name` are stripped of HTML tags and normalized to single
-spaces. Blank names become an empty string.
-
-## Fan-out
-
-Messages are sent one contact at a time. A failure for one contact does not stop
-the rest. The BFF aggregates results into `responders` and `failures` and only
-treats the whole operation as failed when every send failed.
-
-## Next step
-
-[Security](security.md).
+The BFF fans out sequentially. One contact failing does not stop the rest; the
+whole operation fails only when every send fails.

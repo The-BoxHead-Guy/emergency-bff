@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace DataEmergencia\EmergencyBff\Http;
 
+use DataEmergencia\EmergencyBff\Support\ArrayReader;
+
 /**
  * Framework-agnostic HTTP request.
  */
@@ -52,7 +54,7 @@ final class Request
 
     public function header(string $name): ?string
     {
-        return $this->headers[strtolower($name)] ?? null;
+        return ArrayReader::get($this->headers, strtolower($name));
     }
 
     /**
@@ -81,7 +83,7 @@ final class Request
 
     public function input(string $key, mixed $default = null): mixed
     {
-        return $this->body[$key] ?? $default;
+        return ArrayReader::get($this->body, $key) ?? $default;
     }
 
     public function rawBody(): string
@@ -104,7 +106,7 @@ final class Request
 
     public function attribute(string $key, mixed $default = null): mixed
     {
-        return $this->attributes[$key] ?? $default;
+        return ArrayReader::get($this->attributes, $key) ?? $default;
     }
 
     /**

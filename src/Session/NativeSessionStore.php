@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace DataEmergencia\EmergencyBff\Session;
 
+use DataEmergencia\EmergencyBff\Support\ArrayReader;
+
 /**
  * Default session store backed by the native PHP session cookie.
  */
@@ -25,7 +27,13 @@ final class NativeSessionStore implements SessionStore
     {
         $this->start();
 
-        return $_SESSION[$key] ?? $default;
+        $session = $_SESSION ?? null;
+
+        if (!is_array($session)) {
+            return $session[$key] ?? $default;
+        }
+
+        return ArrayReader::get($session, $key) ?? $default;
     }
 
     public function set(string $key, mixed $value): void

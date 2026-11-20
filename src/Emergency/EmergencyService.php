@@ -16,6 +16,8 @@ use DataEmergencia\EmergencyBff\Emergency\Exception\InsufficientCreditsException
 use DataEmergencia\EmergencyBff\Emergency\Exception\MissingContactsException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\MissingProfileException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\WhatsAppFailureException;
+use DataEmergencia\EmergencyBff\Http\ClientMessages;
+use DataEmergencia\EmergencyBff\Support\ArrayReader;
 use DataEmergencia\EmergencyBff\WhatsApp\MessageResult;
 use DataEmergencia\EmergencyBff\WhatsApp\Responder;
 use DataEmergencia\EmergencyBff\WhatsApp\ResponderFactory;
@@ -52,7 +54,7 @@ final class EmergencyService
         $active = $this->emergencies->findActiveByCode($identity->code);
 
         if ($active !== null) {
-            $activeId = (string) ($active['emergency_id'] ?? $active['id'] ?? '');
+            $activeId = (string) (ArrayReader::get($active, 'emergency_id') ?? ArrayReader::get($active, 'id') ?? '');
 
             throw new AlreadyActiveEmergencyException($identity->code, $activeId);
         }
@@ -73,7 +75,7 @@ final class EmergencyService
         $emergencyId = $this->emergencyId($snapshot);
 
         if ($emergencyId === null) {
-            throw new ApiFailureException('creating the emergency', 500);
+            throw new ApiFailureException('create_emergency', 500);
         }
 
         [$responders, $failures] = $this->sendBilledToResponders(
@@ -84,7 +86,7 @@ final class EmergencyService
             fn (array $contact, array $personalInfo): MessageResult => $this->whatsApp->sendActivation(
                 Responder::phoneFromContact($contact),
                 $this->payloads->buildActivationVariables(
-                    (string) ($personalInfo['full_name'] ?? ''),
+                    (string) ArrayReader::get($personalInfo, 'full_name', ''),
                     $emergencyId,
                 ),
                 $emergencyId,
@@ -104,14 +106,14 @@ final class EmergencyService
             true,
         );
 
+        $snapshotReporterPhone = ArrayReader::get($snapshot, 'reporter_phone');
+
         $result = new EmergencyResult(
             emergencyId: $this->emergencyId($snapshot),
             responders: $responders,
             failures: $failures,
             snapshot: $snapshot,
-            reporterPhone: is_string($snapshot['reporter_phone'] ?? null)
-                ? $snapshot['reporter_phone']
-                : $reporterPhone,
+            reporterPhone: is_string($snapshotReporterPhone) ? $snapshotReporterPhone : $reporterPhone,
         );
 
         $this->logger?->info('emergency.activated', [
@@ -155,7 +157,7 @@ final class EmergencyService
         $emergencyId = $this->emergencyId($snapshot);
 
         if ($emergencyId === null) {
-            throw new ApiFailureException('creating the emergency', 500);
+            throw new ApiFailureException('create_emergency', 500);
         }
 
         [$responders, $failures] = $this->sendBilledToResponders(
@@ -166,8 +168,8 @@ final class EmergencyService
             fn (array $contact, array $personalInfo): MessageResult => $this->whatsApp->sendSimulacrum(
                 Responder::phoneFromContact($contact),
                 $this->payloads->buildSimulacrumVariables(
-                    is_string($contact['name'] ?? null) ? $contact['name'] : '',
-                    (string) ($personalInfo['full_name'] ?? ''),
+                    is_string(ArrayReader::get($contact, 'name')) ? ArrayReader::get($contact, 'name') : '',
+                    (string) ArrayReader::get($personalInfo, 'full_name', ''),
                     $emergencyId,
                 ),
                 $emergencyId,
@@ -198,7 +200,9 @@ final class EmergencyService
     public function abort(Identity $identity, string $emergencyId): EmergencyResult
     {
         $active = $this->emergencies->findActiveByCode($identity->code);
-        $activeId = $active !== null ? (string) ($active['emergency_id'] ?? $active['id'] ?? '') : '';
+        $activeId = $active !== null
+            ? (string) (ArrayReader::get($active, 'emergency_id') ?? ArrayReader::get($active, 'id') ?? '')
+            : '';
 
         if ($active === null || $activeId === '') {
             throw new EmergencyNotFoundException($emergencyId);
@@ -265,12 +269,12 @@ final class EmergencyService
         $contacts = $profile->emergencyContacts;
 
         foreach ($responders as $index => $responder) {
-            $contact = $contacts[$index] ?? [];
+            $contact = ArrayReader::get($contacts, $index) ?? [];
 
             if (! $this->hasUsableContact($contact, $responder)) {
                 $failures[] = $this->recordFailure(
                     $responder,
-                    'El contacto de emergencia no tiene un número de teléfono utilizable.',
+                    ClientMessages::message(ClientMessages::FAILURE_CONTACT_UNUSABLE),
                 );
 
                 continue;
@@ -281,15 +285,12 @@ final class EmergencyService
             if (! $result->success) {
                 $failures[] = $this->recordFailure(
                     $responder,
-                    $result->error['message'] ?? 'No se pudo enviar el mensaje de WhatsApp.',
+                    $this->failureMessage($result),
                     $result->status,
                 );
 
                 if ($billed && $result->insufficientCredits) {
-                    throw new InsufficientCreditsException(
-                        $code,
-                        is_string($result->error['message'] ?? null) ? $result->error['message'] : null,
-                    );
+                    throw new InsufficientCreditsException($code);
                 }
 
                 continue;
@@ -305,7 +306,7 @@ final class EmergencyService
 
                 $failures[] = $this->recordFailure(
                     $responder,
-                    'La respuesta de envío de WhatsApp no incluyó un WAMID.',
+                    ClientMessages::message(ClientMessages::FAILURE_WAMID_MISSING),
                     $result->status,
                 );
 
@@ -388,6 +389,19 @@ final class EmergencyService
     }
 
     /**
+     * Returns the client copy of a failed send.
+     */
+    private function failureMessage(MessageResult $result): string
+    {
+        $error = $result->error ?? [];
+        $message = ArrayReader::get($error, 'message');
+
+        return is_string($message) && $message !== ''
+            ? $message
+            : ClientMessages::message(ClientMessages::FAILURE_SEND_FAILED);
+    }
+
+    /**
      * @param  array<int, Responder>  $responders
      * @param  array<string, mixed>|null  $geolocation
      * @return array<string, mixed>
@@ -450,7 +464,7 @@ final class EmergencyService
      */
     private function emergencyId(array $snapshot): ?string
     {
-        $id = $snapshot['emergency_id'] ?? $snapshot['id'] ?? null;
+        $id = ArrayReader::get($snapshot, 'emergency_id') ?? ArrayReader::get($snapshot, 'id');
 
         return is_string($id) && $id !== '' ? $id : null;
     }

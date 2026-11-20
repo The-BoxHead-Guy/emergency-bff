@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace DataEmergencia\EmergencyBff\Config;
 
+use DataEmergencia\EmergencyBff\Support\ArrayReader;
 use DataEmergencia\EmergencyBff\Support\ConfigurationException;
 
 /**
@@ -26,9 +27,6 @@ final class Config
         public readonly bool $cookieSecure = true,
         public readonly bool $cookieHttpOnly = true,
         public readonly string $cookieSameSite = 'Lax',
-        public readonly string $qrBaseHost = 'zur.dataemergencia.com',
-        public readonly string $fallbackOriginUrl = 'https://dataemergencia.com',
-        public readonly bool $local = false,
     ) {
         $this->validate();
     }
@@ -42,7 +40,7 @@ final class Config
     {
         $read = static function (string $key, ?string $default = null) use ($env): ?string {
             if ($env !== null) {
-                $value = $env[$key] ?? false;
+                $value = ArrayReader::get($env, $key, false);
             } else {
                 $value = getenv($key);
             }
@@ -85,9 +83,6 @@ final class Config
             cookieSecure: self::toBool($read('EMERGENCY_BFF_COOKIE_SECURE', 'true')),
             cookieHttpOnly: self::toBool($read('EMERGENCY_BFF_COOKIE_HTTP_ONLY', 'true')),
             cookieSameSite: (string) $read('EMERGENCY_BFF_COOKIE_SAME_SITE', 'Lax'),
-            qrBaseHost: (string) $read('EMERGENCY_BFF_QR_BASE_HOST', 'zur.dataemergencia.com'),
-            fallbackOriginUrl: (string) $read('EMERGENCY_BFF_FALLBACK_ORIGIN_URL', 'https://dataemergencia.com'),
-            local: self::toBool($read('EMERGENCY_BFF_LOCAL', 'false')),
         );
     }
 
@@ -96,26 +91,26 @@ final class Config
      */
     public static function fromArray(array $values): self
     {
-        if (!isset($values['apiKey'], $values['applicationIdentifier'])) {
+        if (
+            ArrayReader::get($values, 'apiKey') === null
+            || ArrayReader::get($values, 'applicationIdentifier') === null
+        ) {
             throw new ConfigurationException('Both apiKey and applicationIdentifier are required.');
         }
 
         return new self(
-            apiOrigin: (string) ($values['apiOrigin'] ?? 'https://api.dataemergencia.com'),
-            apiKey: (string) $values['apiKey'],
-            applicationIdentifier: (string) $values['applicationIdentifier'],
-            timeout: (int) ($values['timeout'] ?? 10),
-            retryCount: (int) ($values['retryCount'] ?? 1),
-            routePrefix: (string) ($values['routePrefix'] ?? '/de-bff/emergency'),
-            sessionName: (string) ($values['sessionName'] ?? 'de_bff_emergency'),
-            sessionTtl: (int) ($values['sessionTtl'] ?? 3600),
-            cookiePath: (string) ($values['cookiePath'] ?? '/'),
-            cookieSecure: (bool) ($values['cookieSecure'] ?? true),
-            cookieHttpOnly: (bool) ($values['cookieHttpOnly'] ?? true),
-            cookieSameSite: (string) ($values['cookieSameSite'] ?? 'Lax'),
-            qrBaseHost: (string) ($values['qrBaseHost'] ?? 'zur.dataemergencia.com'),
-            fallbackOriginUrl: (string) ($values['fallbackOriginUrl'] ?? 'https://dataemergencia.com'),
-            local: (bool) ($values['local'] ?? false),
+            apiOrigin: (string) (ArrayReader::get($values, 'apiOrigin') ?? 'https://api.dataemergencia.com'),
+            apiKey: (string) ArrayReader::get($values, 'apiKey'),
+            applicationIdentifier: (string) ArrayReader::get($values, 'applicationIdentifier'),
+            timeout: (int) (ArrayReader::get($values, 'timeout') ?? 10),
+            retryCount: (int) (ArrayReader::get($values, 'retryCount') ?? 1),
+            routePrefix: (string) (ArrayReader::get($values, 'routePrefix') ?? '/de-bff/emergency'),
+            sessionName: (string) (ArrayReader::get($values, 'sessionName') ?? 'de_bff_emergency'),
+            sessionTtl: (int) (ArrayReader::get($values, 'sessionTtl') ?? 3600),
+            cookiePath: (string) (ArrayReader::get($values, 'cookiePath') ?? '/'),
+            cookieSecure: (bool) (ArrayReader::get($values, 'cookieSecure') ?? true),
+            cookieHttpOnly: (bool) (ArrayReader::get($values, 'cookieHttpOnly') ?? true),
+            cookieSameSite: (string) (ArrayReader::get($values, 'cookieSameSite') ?? 'Lax'),
         );
     }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace DataEmergencia\EmergencyBff\Http\Middleware;
 
+use DataEmergencia\EmergencyBff\Http\ClientMessages;
 use DataEmergencia\EmergencyBff\Http\HttpError;
 use DataEmergencia\EmergencyBff\Http\Request;
 use DataEmergencia\EmergencyBff\Http\Response;
@@ -27,7 +28,12 @@ final class CsrfMiddleware implements Middleware
             $token = is_string($token) ? $token : null;
 
             if (!$this->session->validateCsrf($token)) {
-                throw new HttpError(403, 'csrf_failed', 'The CSRF token is missing or invalid.');
+                throw new HttpError(
+                    403,
+                    'csrf_failed',
+                    'The CSRF token is missing or invalid.',
+                    messageKey: ClientMessages::CSRF_FAILED,
+                );
             }
         }
 

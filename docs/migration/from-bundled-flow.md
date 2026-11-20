@@ -1,114 +1,72 @@
 # Migrating from a bundled emergency flow
 
-This guide maps an application that validates codes, builds WhatsApp payloads
-and manages emergencies in one codebase to a deployment where this package owns
-the server-side emergency flow. It describes behaviour, not a file-by-file
-rewrite.
+Applies to: teams replacing a server-side emergency implementation with this
+package.
 
-## Current flow
+This page describes behavior and sequencing, not a file-by-file rewrite. The
+piece that does not change is the host application; the piece that moves is
+everything between the browser and the DataEmergencia API.
 
-A typical bundled implementation:
+## Responsibility split
 
-1. A person arrives through a QR or identity-code route.
-2. The application validates the code against the DataEmergencia API.
-3. The frontend or backend builds the WhatsApp payloads.
-4. The application sends the messages and creates or cancels the emergency.
-5. API credentials live in the server environment.
-6. The application provides session and CSRF behaviour; the browser library
-   supplies the public Pusher settings for realtime.
+| Responsibility                                | After                                     |
+| --------------------------------------------- | ----------------------------------------- |
+| QR entry point and routing                    | Host application                          |
+| Landing page, branding, legal copy            | Host application                          |
+| Accounts, consent, operator tools             | Host application                          |
+| Front controller, web server, session storage | Host application                          |
+| Code validation and session binding           | BFF `POST /session`                       |
+| API credentials                               | BFF, server-side only                     |
+| WhatsApp payload construction and fan-out     | BFF                                       |
+| Emergency create / read / abort               | BFF routes                                |
+| CSRF, same-origin, rate limiting              | BFF                                       |
+| Panel UI                                      | Recommended library, or your own frontend |
 
-## Target responsibilities
+The browser no longer talks to the DataEmergencia API directly and no credential
+is exposed to it. The host's login session does not authenticate the BFF: a
+person logged into the host is anonymous to the BFF until `POST /session`
+succeeds.
 
-| Responsibility                     | After                                     |
-| ---------------------------------- | ----------------------------------------- |
-| QR entry point and routing         | Host application                          |
-| Code format and existence check    | BFF `POST /session`                       |
-| API key and application identifier | BFF server-side only                      |
-| WhatsApp payload construction      | BFF                                       |
-| Emergency create / show / delete   | BFF routes                                |
-| Session and CSRF                   | BFF native session plus CSRF token        |
-| Realtime                           | Public channels owned by the API          |
-| Panel UI                           | Recommended library, or your own frontend |
-| Branding, legal copy, support      | Host application                          |
-| Operator view and dashboards       | Unchanged                                 |
+## Behavioral differences to plan for
 
-The browser no longer talks to the DataEmergencia API directly, and no API key
-is exposed to it. The browser talks only to the BFF.
+| Area               | Bundled flow                 | BFF                                                                     |
+| ------------------ | ---------------------------- | ----------------------------------------------------------------------- |
+| Session            | Application session and CSRF | Separate BFF session and `X-CSRF-Token`                                 |
+| Cross-origin       | Application CORS rules       | Same-origin only                                                        |
+| Validation errors  | Application responses        | Nested `error` envelope with stable codes                               |
+| WhatsApp templates | Built in the application     | Typed endpoints, built by the API                                       |
+| Realtime           | Application-specific         | Public channels published by the API                                    |
+| Simulation         | Application-specific         | `POST /simulacrum`, pre-creates a simulated emergency the API cleans up |
+| Idempotency        | Application-specific         | `Idempotency-Key`, in-memory per process                                |
+| Tenancy            | Application-specific         | One API key and identifier per deployment                               |
 
-## What moves to the BFF
-
-- Code validation against the upstream API.
-- Profile loading and activation preconditions.
-- The WhatsApp templates, their parameters, links and language.
-- Emergency creation, lookup, refresh and abort.
-- Responder delivery fan-out and partial-failure reporting.
-- CSRF, same-origin enforcement, rate limiting and session TTL.
-
-## What stays in the host application
-
-- The public landing page and the QR route. The host decides how a person
-  reaches the panel.
-- Authentication, accounts, consent screens and privacy notices.
-- Branding, layout around the SOS control and the fallback phone number.
-- Operator tooling, analytics, audit trail or CRM integration.
-- Host-level session storage. The BFF session is separate; the host login
-  session does not authenticate the BFF.
-- The decision to show the panel at all.
-
-## Suggested migration sequence
+## Sequence
 
 1. **Run the BFF beside the current application.** Deploy it on a path of the
-   same origin or on a staging origin. Do not change the current flow yet.
-2. **Prove the contract.** Run the flow in [API contract](../api-contract.md)
-   against a test code and confirm `session`, `simulacrum`, `activate`,
-   `current` and abort.
-3. **Connect one page.** Use a test code and the host's fallback phone number.
-   Keep the current UI reachable.
-4. **Compare payloads.** The BFF builds the WhatsApp payload. Reconcile
-   customised text or parameters before cutover.
-5. **Move traffic progressively.** Route a small percentage of entries to the
-   new page. Watch activation success, partial failures and abort success.
-6. **Remove duplicate server-side code.** Once traffic is migrated, delete the
-   old payload builders and API credentials. Keep the operator tooling.
-7. **Keep a rollback path.** The old route can stay available for one release
-   cycle. Both flows must not activate the same code at the same time.
-
-## Behavioural differences to plan for
-
-| Area               | Bundled flow                 | BFF                                            |
-| ------------------ | ---------------------------- | ---------------------------------------------- |
-| API credentials    | Server-side                  | Server-side only                               |
-| Session            | Application session and CSRF | Separate BFF session and `X-CSRF-Token`        |
-| Cross-origin       | Application CORS rules       | Same-origin only                               |
-| Validation errors  | Application responses        | Nested `error` envelope with stable codes      |
-| WhatsApp templates | Built in the application     | Fixed templates                                |
-| Realtime           | Application-specific         | Public channels published by the API           |
-| Simulation         | Application-specific         | `POST /simulacrum`, never creates an emergency |
-| Idempotency        | Application-specific         | `Idempotency-Key`, in-memory per process       |
-
-## Data and session notes
-
-- The BFF does not migrate host sessions. A person logged in to the host is
-  still anonymous to the BFF until `POST /session` succeeds.
-- The BFF stores a snapshot in the PHP session. The upstream API remains the
-  source of truth; `GET /current` reconciles after a reload.
-- Rate limiting is per BFF session. Multiple tabs share one session and one
-  budget.
-- One BFF deployment uses one API key and application identifier. A
-  multi-tenant migration needs one deployment per trust boundary.
+   same origin or on a staging origin. Leave the current flow untouched.
+2. **Prove the contract.** Exercise session, `current`, simulacrum, activate and
+   abort with a test code, using the [HTTP contract](../bff/routes.md) or the
+   packaged smoke test.
+3. **Connect one page.** Serve the panel from the same origin and keep the old
+   UI reachable.
+4. **Compare payloads.** The API builds the WhatsApp template now. Reconcile
+   customized text or parameters before cutover.
+5. **Move traffic progressively.** Watch activation success, partial failures
+   and abort success.
+6. **Remove duplicate server-side code.** Delete the old payload builders and
+   API credentials once traffic is migrated. Keep operator tooling.
+7. **Keep a rollback path.** Leave the old route available for one release
+   cycle. Both flows must never activate the same code at the same time.
 
 ## Rollback
 
-Keep the previous application deployed and reachable while the new path is
-evaluated. To roll back:
-
 1. Point the entry route back to the old page.
-2. Leave the BFF running but stop sending it traffic.
-3. Resolve any emergency created through the new flow in the operator tooling.
-4. Do not delete the BFF session storage until its TTL has passed.
+2. Stop sending traffic to the BFF, but leave it running.
+3. Resolve any emergency created through the new flow in operator tooling.
+4. Do not delete BFF session storage until its TTL has passed.
 
 ## Related
 
-- [API contract](../api-contract.md)
+- [HTTP contract](../bff/routes.md)
+- [Session and CSRF](../bff/session-and-csrf.md)
 - [Security](../bff/security.md)
-- [Examples](../examples.md)

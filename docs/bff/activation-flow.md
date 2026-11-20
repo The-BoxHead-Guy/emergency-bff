@@ -2,8 +2,9 @@
 
 Applies to: integrators and maintainers.
 
-This page describes what happens between the SOS trigger and the responders'
-WhatsApp messages, including the failure and resume paths.
+What happens between the SOS trigger and the responders' WhatsApp messages,
+including the failure and resume paths. Request and response shapes are in the
+[HTTP contract](routes.md); this page covers the order and the business rules.
 
 ## Sequence
 
@@ -37,116 +38,122 @@ sequenceDiagram
     BFF-->>Browser: 201 responders, partial_failure
 ```
 
-## Step by step
+## 1. Session
 
-### 1. Session
+`POST /session` validates the format and upstream existence, then binds the code
+to the browser session. Profile data is not fetched yet: a session only proves
+which code the browser started.
 
-`POST /session` validates the format and the upstream existence, then stores the
-identity under a regenerated session ID. The response contains a fresh CSRF
-token. No profile data is fetched yet.
+## 2. Activation request
 
-### 2. Activation request
+`POST /activate` accepts optional `geolocation` (flat or nested `coords`,
+numeric validation) and optional `reporter_phone` (E.164). Both are validated
+before any upstream call. The BFF does not store the location; it forwards it so
+the API can persist it through its own domain event.
 
-`POST /activate` accepts either flat `latitude`/`longitude` fields or a nested
-`coords` object. Coordinates remain optional and are validated when present,
-then flattened and forwarded to the upstream `POST /v2/emergency` as
-`geolocation` together with `is_simulated: false`. The BFF does not persist the
-location; the API stores it through its own domain event. The typed activation
-template does not consume the coordinates, because the API owns the Meta
-payload.
+The location is not part of the WhatsApp template. The API builds the Meta
+payload, including the template name, image, date, QR link and map data.
 
-The optional `Idempotency-Key` header (or `idempotency_key` body field) scopes a
-cached result to `operation:code:key`. Repeating the same key returns the first
-result and does not send messages twice. A different key creates a new attempt.
+An `Idempotency-Key` scopes a cached result to `operation:code:key`. A retry with
+the same key returns the first result and does not send messages twice; a
+different key starts a new attempt. Use one key per user action.
 
-### 3. Preconditions
+## 3. Preconditions
 
-The BFF checks for an existing active emergency first. If one exists, it returns
-`409 emergency_already_active` and does not fetch the profile or send messages.
-A frontend should catch this code, hydrate the active emergency and render its
-active state instead of treating it as a hard failure.
+The BFF checks for an existing active emergency first. If one exists it returns
+`409 emergency_already_active` without reading the profile or sending messages.
 
-It then fetches the profile and requires:
+It then requires a profile with usable personal information and at least one
+contact with a phone number. Missing data returns
+`422 missing_medical_profile` or `422 missing_emergency_contacts`. Refusing to
+activate on an incomplete profile is deliberate: a partial alert is worse than a
+clear error.
 
-- personal information with a usable name, and
-- at least one emergency contact with a phone number.
+## 4. Emergency creation
 
-Missing data returns `422 missing_medical_profile` or
-`422 missing_emergency_contacts`.
-
-### 4. Emergency creation
-
-The BFF creates the upstream emergency active before sending, with the
+The upstream emergency is created active _before_ any message is sent, with the
 responders from the profile, `initiator_id: code`, `is_simulated: false` and the
-validated `geolocation` when supplied. The typed templates use the emergency id
-as their `emergency_code` URL suffix, so the record must exist first. An
-upstream `409` during creation becomes `409 emergency_already_active`, so a race
-still returns the domain error.
+validated geolocation.
 
-### 5. Message dispatch
+The order is required: the typed template uses the emergency id as its
+`emergency_code` URL suffix, and the API charges the emergency's `initiator_id`.
+An upstream `409` during creation becomes `409 emergency_already_active`, so a
+race between two activations still returns the domain error.
 
-For each contact, the BFF calls `POST /v2/whatsapp/templates/emergency/activation`
-with the recipient phone and the variables `user_name` and `emergency_code`
-(the created emergency id). The API builds the Meta payload, including the
-template name, image, Spanish date, QR URL and map coordinates.
+## 5. Message dispatch
 
-A send counts as successful only when the nested result has `status: sent` and a
-valid `wamid.`-prefixed `whatsapp_message_id`. A `200` with `status: failed` or a
-missing WAMID is recorded as a failure for that responder (`sent: false`,
-`failed: true`, `message_id: null`), because a responder must never be reported
-as sent without the reference webhooks match on.
+One typed activation message is sent per contact, sequentially. The API owns
+the template content; the BFF sends the recipient phone and the variables
+`user_name` and `emergency_code` (see
+[WhatsApp payloads](whatsapp-payloads.md)).
 
-If every send fails, the BFF deletes the emergency it just created and returns
-`502 whatsapp_delivery_failed`. If at least one succeeds, the BFF writes the
-responder statuses and WAMIDs back through `PUT /v2/emergency/{id}` and returns
-the updated snapshot with `partial_failure` when applicable. The failure entry
-keeps the real HTTP status.
+A send succeeds only when the upstream response carries a valid WhatsApp
+message id (see [WhatsApp payloads](whatsapp-payloads.md#response)). A `200`
+with `status: failed` or a missing id counts as a failed responder, because the
+reference is what the delivery webhooks match on. A responder is never reported
+as sent without it.
 
-### 6. Abort
+Outcomes:
+
+- **Every send fails** → the created emergency is deleted and the caller gets
+  `502 whatsapp_delivery_failed`. No alert exists, so no phantom emergency is
+  left active.
+- **At least one send succeeds** → responder statuses and WAMIDs are written
+  back through `PUT /v2/emergency/{id}`. Failed contacts stay in `failures` and
+  `partial_failure` is true.
+- **`402 INSUFFICIENT_CREDITS`** → the fan-out stops, the created emergency is
+  deleted and the caller gets `402 insufficient_credits`. Billed sends are not
+  attempted without credit.
+
+## 6. Abort
 
 `DELETE /{id}` verifies that the caller's code owns the active emergency, sends
 `emergency_status_aborting_v1` to the same contacts, deletes the upstream
-emergency and clears the session snapshot. It returns `deleted: true`.
+emergency and clears the session snapshot.
 
-A code that does not own the emergency gets `403 emergency_forbidden`. An
-emergency that no longer exists gets `404 emergency_not_found`.
+The abort template is unbilled, so a WhatsApp failure is reported in `failures`
+but does not roll back the deletion. An emergency that no longer exists returns
+`404 emergency_not_found`; one owned by another code returns
+`403 emergency_forbidden`.
 
-### 7. Resume
+## 7. Resume
 
 On page load, `GET /current` asks upstream for the active emergency by code. If
-one exists, the BFF stores and returns it and the frontend renders the delivery
-status. If not, the session snapshot is cleared and the frontend stays idle.
+one exists, the BFF caches and returns it and the frontend renders the delivery
+state. If not, the snapshot is cleared and the frontend stays idle.
 
-### 8. Refresh and realtime
+## 8. Refresh and realtime
 
-`POST /{id}/refresh` re-reads the emergency and its responder statuses.
-Frontends should call it after realtime events, on tab focus, on network
-reconnect and at a throttled interval. Delivery statuses are read, not inferred.
+`POST /{id}/refresh` re-reads the emergency and its responder statuses. Call it
+on mount, after a realtime event, on tab focus, on network reconnect and at a
+throttled interval. Delivery state is read, never inferred from a realtime
+payload.
+
+Realtime is optional and owned by the API. The BFF exposes no Pusher
+configuration and returns no realtime block; the browser library mounts with its
+own public settings.
 
 ## Simulation
 
-`POST /simulacrum` follows the same profile and contact checks. It accepts the
-same optional `geolocation` payload as `/activate`, validates and flattens it,
-then first creates an active simulated emergency with `is_simulated: true` and
-the validated `geolocation` to obtain a valid `emergency_code`. The API persists
-the simulated emergency's location through its own domain event; the BFF does not
-store it. The BFF then calls
+`POST /simulacrum` follows the same profile and contact checks and accepts the
+same optional geolocation. It creates an active simulated emergency first, only
+to obtain a valid `emergency_code`, then sends
 `POST /v2/whatsapp/templates/emergency/simulacrum` with `contact_name`,
-`user_name` and `emergency_code`. The created record stays active and is never
-written back. When every send fails, the BFF deletes the record it created.
+`user_name` and `emergency_code`.
 
-The response has `simulated: true` and `emergency_id: null`, so the BFF does not
-expose the created id to the client.
+The created record stays active and is never written back. The API's scheduled
+cleanup deactivates it, so upstream active-emergency lookups can surface it in
+the meantime. When every send fails, or the API rejects the send for credits,
+the BFF deletes the record it created. The response reports
+`simulated: true` and `emergency_id: null`.
+
+Simulation does not check for an existing real emergency. Blocking that case is
+a frontend responsibility.
 
 ## Idempotency and retries
 
-- Reads are retried by the HTTP client.
-- Activation and simulation are idempotent only when the caller supplies a key.
-- The default in-memory idempotency store is per-process. Under PHP-FPM it is
-  bounded by the worker lifetime; a shared store is a post-MVP concern for
-  multi-instance deployments.
-- The browser should generate one key per user action and reuse it on retry.
-
-## Next step
-
-[WhatsApp payloads](whatsapp-payloads.md).
+- Reads are retried by the HTTP client; writes are not.
+- Activation and simulation are idempotent only with a caller-supplied key.
+- The default idempotency store is in-memory and per process. Under PHP-FPM it
+  is bounded by the worker lifetime; multi-instance deployments need a shared
+  store.

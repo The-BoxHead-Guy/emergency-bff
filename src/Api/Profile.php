@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace DataEmergencia\EmergencyBff\Api;
 
+use DataEmergencia\EmergencyBff\Support\ArrayReader;
+
 /**
  * Medical profile snapshot fetched at activation time.
  */
@@ -34,7 +36,7 @@ final class Profile
 
     public function fullName(): string
     {
-        $name = $this->personalInfo['full_name'] ?? '';
+        $name = ArrayReader::get($this->personalInfo, 'full_name', '');
 
         return is_string($name) ? $name : '';
     }

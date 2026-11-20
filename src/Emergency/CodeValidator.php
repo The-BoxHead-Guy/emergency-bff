@@ -8,6 +8,7 @@ use DataEmergencia\EmergencyBff\Emergency\Exception\InactiveCodeException;
 use DataEmergencia\EmergencyBff\Http\ApiClient;
 use DataEmergencia\EmergencyBff\Http\ApiException;
 use DataEmergencia\EmergencyBff\Http\Endpoints;
+use DataEmergencia\EmergencyBff\Support\ArrayReader;
 
 /**
  * Validates the identity code against the upstream FMD existence endpoint.
@@ -37,7 +38,10 @@ final class CodeValidator
         }
 
         $body = $response->body();
-        $exists = $body['data']['attributes']['exists'] ?? $body['data']['exists'] ?? $body['exists'] ?? false;
+        $exists = ArrayReader::get($body, 'data.attributes.exists')
+            ?? ArrayReader::get($body, 'data.exists')
+            ?? ArrayReader::get($body, 'exists')
+            ?? false;
 
         return filter_var($exists, FILTER_VALIDATE_BOOLEAN);
     }

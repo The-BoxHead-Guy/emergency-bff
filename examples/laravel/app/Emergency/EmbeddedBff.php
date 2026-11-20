@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Emergency;
 
+use DataEmergencia\EmergencyBff\Api\CreditRepository;
 use DataEmergencia\EmergencyBff\Api\EmergencyRepository;
 use DataEmergencia\EmergencyBff\Api\ProfileRepository;
 use DataEmergencia\EmergencyBff\Api\WhatsAppClient;
@@ -49,21 +50,12 @@ final class EmbeddedBff
             'timeout' => (int) config('services.emergency_bff.timeout', 10),
             'retryCount' => (int) config('services.emergency_bff.retry_count', 1),
             'sessionTtl' => (int) config('services.emergency_bff.session_ttl', 3600),
-            'qrBaseHost' => (string) config(
-                'services.emergency_bff.qr_base_host',
-                'zur.dataemergencia.com'
-            ),
-            'local' => (bool) config('services.emergency_bff.local', false),
         ]);
 
         $http = Psr18ApiClient::create($config);
         $session = new SessionManager(new LaravelSessionStore($this->session), $config->sessionTtl);
 
-        $payloads = new WhatsAppPayloadBuilder(
-            qrBaseHost: $config->qrBaseHost,
-            fallbackOriginUrl: $config->fallbackOriginUrl,
-            local: $config->local,
-        );
+        $payloads = new WhatsAppPayloadBuilder();
 
         $service = new EmergencyService(
             profiles: new ProfileRepository($http),
@@ -80,6 +72,7 @@ final class EmbeddedBff
             session: $session,
             validator: new CodeValidator($http),
             emergency: $service,
+            credits: new CreditRepository($http),
             logger: $this->logger,
         );
     }

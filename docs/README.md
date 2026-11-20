@@ -1,75 +1,44 @@
 # Emergency BFF documentation
 
-`dataemergencia/emergency-bff` is a framework-agnostic PHP backend-for-frontend
-for the DataEmergencia emergency flow. It validates the identity code, builds
-the WhatsApp templates server-side and keeps the emergency state in sync with
-the upstream API.
+`dataemergencia/emergency-bff` is a framework-agnostic PHP backend for frontend
+for the DataEmergencia emergency and alert flow. It validates the identity code,
+binds it to a server-side session, applies the emergency rules and calls the
+DataEmergencia API with credentials the browser never sees.
 
 The browser panel is a separate package:
-[`@dataemergencia/emergency`](https://github.com/The-BoxHead-Guy/emergency). It
-is the recommended frontend for this backend.
+[`@dataemergencia/emergency`](https://github.com/The-BoxHead-Guy/emergency).
 
-## Start here
+## If you are…
 
-| If you are…                           | Read                                                                                                              |
-| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Installing the BFF for the first time | [Requirements](bff/requirements.md) → [Installation](bff/installation.md) → [Configuration](bff/configuration.md) |
-| Building the whole flow               | [Zero to panel](onboarding/zero-to-panel.md)                                                                      |
-| Calling the JSON API directly         | [Routes](bff/routes.md) and [API contract](api-contract.md)                                                       |
-| Integrating Laravel                   | [Session and CSRF](bff/session-and-csrf.md)                                                                       |
-| Operating the service                 | [Deployment](bff/deployment.md) and [Operations FAQ](operations/faq.md)                                           |
-| Upgrading a release                   | [Upgrade guide](bff/upgrade.md) and [Versioning](release/versioning.md)                                           |
+| …then read                                          |
+| --------------------------------------------------- |
+| Integrating for the first time                      | [Zero to panel](onboarding/zero-to-panel.md) → [Examples](onboarding/examples.md)         |
+| Calling the BFF from a frontend                     | [HTTP contract](bff/routes.md)                                                            |
+| Understanding what happens between SOS and WhatsApp | [Activation flow](bff/activation-flow.md) → [WhatsApp payloads](bff/whatsapp-payloads.md) |
+| Configuring credentials and runtime behavior        | [Configuration](bff/configuration.md)                                                     |
+| Hosting the BFF inside an existing PHP application  | [Session and CSRF](bff/session-and-csrf.md)                                               |
+| Reviewing the threat model or the known limitations | [Security](bff/security.md)                                                               |
+| Operating a deployment                              | [Troubleshooting](operations/troubleshooting.md)                                          |
+| Replacing a bundled emergency implementation        | [Migration](migration/from-bundled-flow.md)                                               |
+| Upgrading                                           | [Upgrade guide](bff/upgrade.md) → [Versioning](release/versioning.md)                     |
+| Publishing a release                                | [Releasing](release/releasing.md)                                                         |
+| Writing documentation                               | [Documentation standard](contributing/documentation.md)                                   |
 
-## Documentation map
+## Structure
 
-### Overview and quickstart
+```text
+docs/
+├── bff/            contract, behavior and integration rules
+├── onboarding/     getting started and examples
+├── operations/     diagnosing a deployment
+├── migration/      moving from a bundled flow
+├── release/        semver policy and the release runbook
+├── contributing/   documentation standard
+└── plans/          implementation plans, not reference documentation
+```
 
-- [Requirements](bff/requirements.md)
-- [Installation](bff/installation.md)
-- [Zero to panel](onboarding/zero-to-panel.md)
+## Related
 
-### Configuration and integration
-
-- [Configuration reference](bff/configuration.md)
-- [Session and CSRF](bff/session-and-csrf.md)
-- [Routes](bff/routes.md)
-- [Upstream API mapping](bff/upstream-api.md)
-- [Activation flow](bff/activation-flow.md)
-- [WhatsApp payloads](bff/whatsapp-payloads.md)
-- [Security](bff/security.md)
-- [Realtime ownership](bff/pusher.md)
-- [Deployment](bff/deployment.md)
-- [Upgrade guide](bff/upgrade.md)
-
-### API contract and examples
-
-- [API contract](api-contract.md)
-- [Examples](examples.md)
-
-### Operations and migration
-
-- [FAQ](operations/faq.md)
-- [Troubleshooting](operations/troubleshooting.md)
-- [Migration from a bundled flow](migration/from-bundled-flow.md)
-
-### Releases
-
-- [Releasing the BFF](release/releasing.md)
-- [Versioning](release/versioning.md)
-
-### Contributor documentation
-
-- [Documentation standards](contributing/documentation.md)
-- [Verification log](contributing/verification.md)
-
-## Recommended library
-
-The browser panel is documented in its own repository:
-
+- [Package README](../README.md)
+- [Changelog](../CHANGELOG.md)
 - [Client documentation](https://github.com/The-BoxHead-Guy/emergency#readme)
-- [Client quickstart](https://github.com/The-BoxHead-Guy/emergency/blob/main/docs/client/quickstart.md)
-
-## Version
-
-These docs describe `0.1.2` and are versioned with the package. The quickstart
-is tested against the latest published tag.

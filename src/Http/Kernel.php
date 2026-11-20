@@ -25,12 +25,16 @@ use DataEmergencia\EmergencyBff\Http\Middleware\RateLimitMiddleware;
 use DataEmergencia\EmergencyBff\Http\Middleware\SameOriginMiddleware;
 use DataEmergencia\EmergencyBff\Http\Middleware\SessionMiddleware;
 use DataEmergencia\EmergencyBff\Session\SessionManager;
+use DataEmergencia\EmergencyBff\Support\ArrayReader;
 use DataEmergencia\EmergencyBff\Support\RateLimiter;
 use Psr\Log\LoggerInterface;
 use Throwable;
 
 /**
  * JSON HTTP kernel for the emergency BFF.
+ *
+ * Consumer-facing messages are resolved from the Spanish `ClientMessages`
+ * catalog.
  */
 final class Kernel
 {
@@ -61,12 +65,12 @@ final class Kernel
         try {
             $response = $this->pipeline()->handle($request, fn (Request $request): Response => $this->dispatch($request));
         } catch (HttpError $error) {
-            $response = $this->error($error->status, $error->errorCode, $error->getMessage(), $error->details);
+            $response = $this->error($error->status, $error->errorCode, $error->details, $error->messageKey());
         } catch (EmergencyException $exception) {
             [$status, $code] = $this->mapEmergencyException($exception);
-            $response = $this->error($status, $code, $exception->getMessage(), $exception->details());
+            $response = $this->error($status, $code, $exception->details());
         } catch (ApiException $exception) {
-            $response = $this->error(502, 'upstream_error', $exception->getMessage(), [
+            $response = $this->error(502, 'upstream_error', [
                 'status' => $exception->status(),
                 'upstream_code' => $exception->errorCode(),
             ]);
@@ -76,7 +80,7 @@ final class Kernel
                 'exception' => $exception::class,
                 'message' => $exception->getMessage(),
             ]);
-            $response = $this->error(500, 'internal_error', 'An unexpected error occurred.');
+            $response = $this->error(500, 'internal_error');
         }
 
         return $response
@@ -130,12 +134,21 @@ final class Kernel
             $allowed = $this->router->allowedMethods($request->path);
 
             if ($allowed !== []) {
-                throw new HttpError(405, 'method_not_allowed', 'The HTTP method is not allowed for this route.', [
-                    'allowed' => $allowed,
-                ]);
+                throw new HttpError(
+                    405,
+                    'method_not_allowed',
+                    'The HTTP method is not allowed for this route.',
+                    ['allowed' => $allowed],
+                    messageKey: ClientMessages::METHOD_NOT_ALLOWED,
+                );
             }
 
-            throw new HttpError(404, 'not_found', 'The requested route does not exist.');
+            throw new HttpError(
+                404,
+                'not_found',
+                'The requested route does not exist.',
+                messageKey: ClientMessages::NOT_FOUND,
+            );
         }
 
         return $match['handler']($request, $match['params']);
@@ -160,9 +173,13 @@ final class Kernel
                 $code = $request->input('code');
 
                 if (!is_string($code) || trim($code) === '') {
-                    throw new HttpError(422, 'validation_failed', 'A 6-character identity code is required.', [
-                        'field' => 'code',
-                    ]);
+                    throw new HttpError(
+                        422,
+                        'validation_failed',
+                        'A 6-character identity code is required.',
+                        ['field' => 'code'],
+                        messageKey: ClientMessages::IDENTITY_CODE_REQUIRED,
+                    );
                 }
 
                 $identity = $this->validator->validate(trim($code));
@@ -237,7 +254,7 @@ final class Kernel
             })
             ->add('POST', '/{id}/refresh', function (Request $request, array $params): Response {
                 $this->identity();
-                $snapshot = $this->emergency->refresh((string) $params['id']);
+                $snapshot = $this->emergency->refresh((string) ArrayReader::get($params, 'id'));
                 $this->session->storeEmergency($snapshot);
 
                 return Response::json([
@@ -246,7 +263,7 @@ final class Kernel
             })
             ->add('DELETE', '/{id}', function (Request $request, array $params): Response {
                 $identity = $this->identity();
-                $result = $this->emergency->abort($identity, (string) $params['id']);
+                $result = $this->emergency->abort($identity, (string) ArrayReader::get($params, 'id'));
                 $this->session->clearEmergency();
 
                 return Response::json($this->resultPayload($result) + ['deleted' => true]);
@@ -258,7 +275,12 @@ final class Kernel
     private function identity(): Identity
     {
         if (!$this->session->hasIdentity()) {
-            throw new HttpError(401, 'unauthenticated', 'Start a session with POST /session first.');
+            throw new HttpError(
+                401,
+                'unauthenticated',
+                'Start a session with POST /session first.',
+                messageKey: ClientMessages::UNAUTHENTICATED,
+            );
         }
 
         return $this->session->identity();
@@ -279,36 +301,50 @@ final class Kernel
         }
 
         if (!is_array($geolocation)) {
-            throw new HttpError(422, 'validation_failed', 'The geolocation payload must be an object.', [
-                'field' => 'geolocation',
-            ]);
+            throw new HttpError(
+                422,
+                'validation_failed',
+                'The geolocation payload must be an object.',
+                ['field' => 'geolocation'],
+                messageKey: ClientMessages::GEOLOCATION_OBJECT,
+            );
         }
 
-        $coordinates = isset($geolocation['coords']) && is_array($geolocation['coords'])
-            ? $geolocation['coords']
-            : $geolocation;
+        $coords = ArrayReader::get($geolocation, 'coords');
+
+        $coordinates = is_array($coords) ? $coords : $geolocation;
 
         foreach (['latitude', 'longitude'] as $field) {
-            if (isset($coordinates[$field]) && !is_numeric($coordinates[$field])) {
-                throw new HttpError(422, 'validation_failed', 'The geolocation coordinates must be numeric.', [
-                    'field' => 'geolocation.'.$field,
-                ]);
+            $coordinate = ArrayReader::get($coordinates, $field);
+
+            if ($coordinate !== null && !is_numeric($coordinate)) {
+                throw new HttpError(
+                    422,
+                    'validation_failed',
+                    'The geolocation coordinates must be numeric.',
+                    ['field' => "geolocation.{$field}"],
+                    messageKey: ClientMessages::GEOLOCATION_COORDINATES_NUMERIC,
+                );
             }
         }
 
-        $accuracy = $coordinates['accuracy'] ?? $geolocation['accuracy'] ?? null;
+        $accuracy = ArrayReader::get($coordinates, 'accuracy') ?? ArrayReader::get($geolocation, 'accuracy');
 
         if ($accuracy !== null && !is_numeric($accuracy)) {
-            throw new HttpError(422, 'validation_failed', 'The geolocation accuracy must be numeric.', [
-                'field' => 'geolocation.accuracy',
-            ]);
+            throw new HttpError(
+                422,
+                'validation_failed',
+                'The geolocation accuracy must be numeric.',
+                ['field' => 'geolocation.accuracy'],
+                messageKey: ClientMessages::GEOLOCATION_ACCURACY_NUMERIC,
+            );
         }
 
         $flat = [];
 
         foreach (['latitude', 'longitude'] as $field) {
-            if (array_key_exists($field, $coordinates)) {
-                $flat[$field] = (float) $coordinates[$field];
+            if (ArrayReader::has($coordinates, $field)) {
+                $flat[$field] = (float) ArrayReader::get($coordinates, $field);
             }
         }
 
@@ -317,8 +353,8 @@ final class Kernel
         }
 
         foreach (['source', 'recorded_at'] as $field) {
-            if (array_key_exists($field, $geolocation)) {
-                $flat[$field] = $geolocation[$field];
+            if (ArrayReader::has($geolocation, $field)) {
+                $flat[$field] = ArrayReader::get($geolocation, $field);
             }
         }
 
@@ -330,7 +366,7 @@ final class Kernel
      */
     private function intQuery(Request $request, string $key, int $default, int $min, ?int $max = null): int
     {
-        $value = $request->query()[$key] ?? null;
+        $value = ArrayReader::get($request->query(), $key);
 
         if ($value === null || $value === '') {
             return $default;
@@ -340,9 +376,13 @@ final class Kernel
             || (is_string($value) && preg_match('/^-?\d+$/', trim($value)) === 1);
 
         if (!$valid) {
-            throw new HttpError(422, 'validation_failed', sprintf('The %s query parameter must be an integer.', $key), [
-                'field' => $key,
-            ]);
+            throw new HttpError(
+                422,
+                'validation_failed',
+                sprintf('The %s query parameter must be an integer.', $key),
+                ['field' => $key],
+                messageKey: ClientMessages::QUERY_PARAM_INTEGER,
+            );
         }
 
         $integer = (int) $value;
@@ -355,6 +395,7 @@ final class Kernel
                     ? sprintf('The %s query parameter must be at least %d.', $key, $min)
                     : sprintf('The %s query parameter must be between %d and %d.', $key, $min, $max),
                 ['field' => $key],
+                messageKey: ClientMessages::QUERY_PARAM_RANGE,
             );
         }
 
@@ -377,9 +418,13 @@ final class Kernel
         }
 
         if (!is_string($value)) {
-            throw new HttpError(422, 'validation_failed', 'The reporter phone must be a string.', [
-                'field' => 'reporter_phone',
-            ]);
+            throw new HttpError(
+                422,
+                'validation_failed',
+                'The reporter phone must be a string.',
+                ['field' => 'reporter_phone'],
+                messageKey: ClientMessages::REPORTER_PHONE_STRING,
+            );
         }
 
         $phone = trim($value);
@@ -389,15 +434,23 @@ final class Kernel
         }
 
         if (mb_strlen($phone) > 20) {
-            throw new HttpError(422, 'validation_failed', 'The reporter phone may not be greater than 20 characters.', [
-                'field' => 'reporter_phone',
-            ]);
+            throw new HttpError(
+                422,
+                'validation_failed',
+                'The reporter phone may not be greater than 20 characters.',
+                ['field' => 'reporter_phone'],
+                messageKey: ClientMessages::REPORTER_PHONE_MAX,
+            );
         }
 
         if (preg_match('/^\+?\d{7,15}$/', $phone) !== 1) {
-            throw new HttpError(422, 'validation_failed', 'The reporter phone must be a valid E.164 phone number.', [
-                'field' => 'reporter_phone',
-            ]);
+            throw new HttpError(
+                422,
+                'validation_failed',
+                'The reporter phone must be a valid E.164 phone number.',
+                ['field' => 'reporter_phone'],
+                messageKey: ClientMessages::REPORTER_PHONE_E164,
+            );
         }
 
         return $phone;
@@ -434,14 +487,16 @@ final class Kernel
     }
 
     /**
+     * Builds the public error envelope with the Spanish client copy.
+     *
      * @param array<string, mixed> $details
      */
-    private function error(int $status, string $code, string $message, array $details = []): Response
+    private function error(int $status, string $code, array $details = [], ?string $key = null): Response
     {
         return Response::json([
             'error' => [
                 'code' => $code,
-                'message' => $message,
+                'message' => ClientMessages::message($key ?? $code, $details),
                 'details' => $details,
                 'request_id' => $this->requestId,
             ],

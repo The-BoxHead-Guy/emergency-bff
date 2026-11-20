@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace DataEmergencia\EmergencyBff\WhatsApp;
 
+use DataEmergencia\EmergencyBff\Support\ArrayReader;
+
 /**
  * A single emergency responder and the delivery state of its message.
  */
@@ -25,10 +27,12 @@ final class Responder
      */
     public static function fromContact(array $contact): self
     {
+        $name = ArrayReader::get($contact, 'name');
+
         return new self(
             phone: self::phoneFromContact($contact),
-            name: is_string($contact['name'] ?? null) ? $contact['name'] : '',
-            messageId: self::messageIdOrNull($contact['messageId'] ?? $contact['message_id'] ?? null),
+            name: is_string($name) ? $name : '',
+            messageId: self::messageIdOrNull(ArrayReader::get($contact, 'messageId') ?? ArrayReader::get($contact, 'message_id')),
         );
     }
 
@@ -37,11 +41,9 @@ final class Responder
      */
     public static function phoneFromContact(array $contact): string
     {
-        $phones = $contact['phones'] ?? null;
-
-        if (is_array($phones) && isset($phones[0]) && is_array($phones[0])) {
-            $areaCode = (string) ($phones[0]['area_code'] ?? '');
-            $number = (string) ($phones[0]['number'] ?? '');
+        if (is_array(ArrayReader::get($contact, 'phones.0'))) {
+            $areaCode = (string) ArrayReader::get($contact, 'phones.0.area_code', '');
+            $number = (string) ArrayReader::get($contact, 'phones.0.number', '');
             $phone = $areaCode.$number;
 
             if ($phone !== '') {
@@ -50,8 +52,10 @@ final class Responder
         }
 
         foreach (['recipientId', 'recipient_id', 'phone'] as $key) {
-            if (isset($contact[$key]) && is_string($contact[$key]) && $contact[$key] !== '') {
-                return ltrim($contact[$key], '+');
+            $value = ArrayReader::get($contact, $key);
+
+            if ($value !== null && is_string($value) && $value !== '') {
+                return ltrim($value, '+');
             }
         }
 

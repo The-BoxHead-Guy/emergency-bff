@@ -31,7 +31,7 @@ final class RateLimiter
         $now = $this->now();
         $all = $this->store->get(self::STORAGE_KEY, []);
         $all = is_array($all) ? $all : [];
-        $entries = $all[$bucket] ?? [];
+        $entries = ArrayReader::get($all, $bucket);
         $entries = is_array($entries) ? $entries : [];
 
         $entries = array_values(array_filter(

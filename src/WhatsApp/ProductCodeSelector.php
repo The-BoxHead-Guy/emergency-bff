@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace DataEmergencia\EmergencyBff\WhatsApp;
 
+use DataEmergencia\EmergencyBff\Support\ArrayReader;
+
 /**
  * Selects the product code using the same rules as `QRProductCodeService`.
  */
@@ -29,7 +31,7 @@ final class ProductCodeSelector
         $found = null;
 
         foreach (self::PRODUCT_CODE_MAP as $key) {
-            $value = $productCodes[$key] ?? null;
+            $value = ArrayReader::get($productCodes, $key);
 
             if (is_string($value) && $value !== '' && (!$excludePanicButton || $key !== 'panic_button')) {
                 $found = $value;
@@ -37,7 +39,7 @@ final class ProductCodeSelector
         }
 
         if ($found === null) {
-            $fallback = $productCodes['dte'] ?? null;
+            $fallback = ArrayReader::get($productCodes, 'dte');
             $found = is_string($fallback) && $fallback !== '' ? $fallback : null;
         }
 

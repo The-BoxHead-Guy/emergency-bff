@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace DataEmergencia\EmergencyBff\WhatsApp;
 
+use DataEmergencia\EmergencyBff\Support\ArrayReader;
+
 /**
  * Builds the abort payload and the variable maps for the typed emergency endpoints.
  *
@@ -26,7 +28,7 @@ final class WhatsAppPayloadBuilder
                 [
                     'type' => 'body',
                     'parameters' => [
-                        $this->textParameter('user_name', $this->sanitizeName($personalInfo['full_name'] ?? '')),
+                        $this->textParameter('user_name', $this->sanitizeName(ArrayReader::get($personalInfo, 'full_name', ''))),
                     ],
                 ],
             ],

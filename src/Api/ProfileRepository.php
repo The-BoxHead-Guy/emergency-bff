@@ -9,6 +9,7 @@ use DataEmergencia\EmergencyBff\Emergency\Exception\MissingProfileException;
 use DataEmergencia\EmergencyBff\Http\ApiClient;
 use DataEmergencia\EmergencyBff\Http\ApiException;
 use DataEmergencia\EmergencyBff\Http\Endpoints;
+use DataEmergencia\EmergencyBff\Support\ArrayReader;
 
 /**
  * Fetches the medical profile from the existing FMD endpoint.
@@ -28,7 +29,7 @@ final class ProfileRepository
                 throw new MissingProfileException($code);
             }
 
-            throw new ApiFailureException('fetching the medical profile', $exception->status(), $exception);
+            throw new ApiFailureException('fetch_medical_profile', $exception->status(), $exception);
         }
 
         $data = $this->extractData($response->body());
@@ -52,9 +53,9 @@ final class ProfileRepository
     private function extractData(array $body): ?array
     {
         $candidates = [
-            $body['data']['attributes']['data'] ?? null,
-            $body['attributes']['data'] ?? null,
-            $body['data'] ?? null,
+            ArrayReader::get($body, 'data.attributes.data'),
+            ArrayReader::get($body, 'attributes.data'),
+            ArrayReader::get($body, 'data'),
         ];
 
         foreach ($candidates as $candidate) {
@@ -72,12 +73,16 @@ final class ProfileRepository
      */
     private function extractPersonalInfo(array $data): array
     {
-        if (isset($data['personal_info']) && is_array($data['personal_info'])) {
-            return $data['personal_info'];
+        $personalInfo = ArrayReader::get($data, 'personal_info');
+
+        if (is_array($personalInfo)) {
+            return $personalInfo;
         }
 
-        if (isset($data['personal']['personal_info']) && is_array($data['personal']['personal_info'])) {
-            return $data['personal']['personal_info'];
+        $personalInfo = ArrayReader::get($data, 'personal.personal_info');
+
+        if (is_array($personalInfo)) {
+            return $personalInfo;
         }
 
         return [];
@@ -89,7 +94,7 @@ final class ProfileRepository
      */
     private function extractProductCodes(array $data): array
     {
-        $codes = $data['product_codes'] ?? [];
+        $codes = ArrayReader::get($data, 'product_codes', []);
 
         return is_array($codes) ? array_filter($codes, 'is_string') : [];
     }
@@ -100,7 +105,8 @@ final class ProfileRepository
      */
     private function extractEmergencyContacts(array $data): array
     {
-        $contacts = $data['emergency_info'] ?? $data['emergencia']['emergency_info'] ?? [];
+        $contacts = ArrayReader::get($data, 'emergency_info')
+            ?? ArrayReader::get($data, 'emergencia.emergency_info', []);
 
         if (!is_array($contacts)) {
             return [];

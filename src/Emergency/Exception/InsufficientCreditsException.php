@@ -13,12 +13,15 @@ final class InsufficientCreditsException extends EmergencyException
 
     public const STATUS = 402;
 
+    /**
+     * Canonical upstream error code for a rejected billed send.
+     */
     public const UPSTREAM_CODE = 'INSUFFICIENT_CREDITS';
 
-    public function __construct(string $code, ?string $upstreamMessage = null)
+    public function __construct(string $code)
     {
         parent::__construct(
-            $upstreamMessage ?? 'La cuenta no tiene créditos suficientes para enviar mensajes de WhatsApp.',
+            'The account does not have enough credits to send WhatsApp messages.',
             self::CODE,
             [
                 'code' => $code,

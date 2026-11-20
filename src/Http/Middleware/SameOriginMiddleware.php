@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace DataEmergencia\EmergencyBff\Http\Middleware;
 
+use DataEmergencia\EmergencyBff\Http\ClientMessages;
 use DataEmergencia\EmergencyBff\Http\HttpError;
 use DataEmergencia\EmergencyBff\Http\Request;
 use DataEmergencia\EmergencyBff\Http\Response;
@@ -19,7 +20,12 @@ final class SameOriginMiddleware implements Middleware
 
         if ($origin !== null && $origin !== '') {
             if (!$this->isSameOrigin($origin, $request->header('host'))) {
-                throw new HttpError(403, 'cross_origin_denied', 'Cross-origin requests are not allowed.');
+                throw new HttpError(
+                    403,
+                    'cross_origin_denied',
+                    'Cross-origin requests are not allowed.',
+                    messageKey: ClientMessages::CROSS_ORIGIN_DENIED,
+                );
             }
 
             $response = $next($request);

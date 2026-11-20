@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace DataEmergencia\EmergencyBff\Http\Middleware;
 
+use DataEmergencia\EmergencyBff\Http\ClientMessages;
 use DataEmergencia\EmergencyBff\Http\HttpError;
 use DataEmergencia\EmergencyBff\Http\Request;
 use DataEmergencia\EmergencyBff\Http\Response;
@@ -20,12 +21,16 @@ final class RateLimitMiddleware implements Middleware
 
     public function handle(Request $request, callable $next): Response
     {
-        $bucket = $request->method.':'.$request->path;
+        $bucket = "{$request->method}:{$request->path}";
 
         if (!$this->limiter->allow($bucket)) {
-            throw new HttpError(429, 'rate_limited', 'Too many requests. Please retry later.', [
-                'retry_after' => $this->limiter->windowSeconds(),
-            ]);
+            throw new HttpError(
+                429,
+                'rate_limited',
+                'Too many requests. Please retry later.',
+                ['retry_after' => $this->limiter->windowSeconds()],
+                messageKey: ClientMessages::RATE_LIMITED,
+            );
         }
 
         return $next($request);

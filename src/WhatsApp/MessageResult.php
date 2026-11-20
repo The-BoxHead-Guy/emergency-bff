@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace DataEmergencia\EmergencyBff\WhatsApp;
 
 use DataEmergencia\EmergencyBff\Emergency\Exception\InsufficientCreditsException;
+use DataEmergencia\EmergencyBff\Support\ArrayReader;
 
 /**
  * Result of a single WhatsApp template send.
@@ -85,15 +86,7 @@ final class MessageResult
         ];
 
         foreach ($paths as $path) {
-            $value = $data;
-
-            foreach ($path as $segment) {
-                if (!is_array($value) || !array_key_exists($segment, $value)) {
-                    continue 2;
-                }
-
-                $value = $value[$segment];
-            }
+            $value = ArrayReader::get($data, implode('.', $path));
 
             if (is_string($value) && str_starts_with($value, 'wamid.') && $value !== 'wamid.') {
                 return $value;

@@ -8,11 +8,15 @@ use DataEmergencia\EmergencyBff\Emergency\Exception\InsufficientCreditsException
 use DataEmergencia\EmergencyBff\Http\ApiClient;
 use DataEmergencia\EmergencyBff\Http\ApiException;
 use DataEmergencia\EmergencyBff\Http\ApiResponse;
+use DataEmergencia\EmergencyBff\Http\ClientMessages;
 use DataEmergencia\EmergencyBff\Http\Endpoints;
+use DataEmergencia\EmergencyBff\Support\ArrayReader;
 use DataEmergencia\EmergencyBff\WhatsApp\MessageResult;
 
 /**
  * Sends WhatsApp template payloads through the existing API.
+ *
+ * Failure messages are resolved from the Spanish `ClientMessages` catalog.
  */
 final class WhatsAppClient
 {
@@ -29,20 +33,21 @@ final class WhatsAppClient
             $response = $this->client->post(Endpoints::whatsappTemplates(), $payload);
         } catch (ApiException $exception) {
             return MessageResult::failed([
-                'message' => $exception->getMessage(),
+                'message' => ClientMessages::message($this->failureKey($exception)),
                 'code' => $exception->errorCode(),
-                'details' => $exception->details(),
             ], $exception->status());
         }
 
-        $data = $response->body()['data'] ?? null;
+        $body = $response->body();
+        $data = ArrayReader::get($body, 'data');
+        $attributes = ArrayReader::get($body, 'data.attributes');
 
-        if (is_array($data) && isset($data['attributes']) && is_array($data['attributes'])) {
-            $data = $data['attributes'];
+        if (is_array($attributes)) {
+            $data = $attributes;
         }
 
         return MessageResult::sent(
-            is_array($data) ? $data : $response->body(),
+            is_array($data) ? $data : $body,
             $response->status(),
         );
     }
@@ -79,15 +84,16 @@ final class WhatsAppClient
                 ],
             ]);
         } catch (ApiException $exception) {
-            if ($exception->status() === InsufficientCreditsException::STATUS) {
-                return MessageResult::insufficientCredits($exception->getMessage(), $exception->details());
+            if ($this->isInsufficientCredits($exception)) {
+                return MessageResult::insufficientCredits(
+                    ClientMessages::message(ClientMessages::FAILURE_INSUFFICIENT_CREDITS),
+                );
             }
 
             return MessageResult::failed(
                 [
-                    'message' => $exception->getMessage(),
+                    'message' => ClientMessages::message($this->failureKey($exception)),
                     'code' => $exception->errorCode(),
-                    'details' => $exception->details(),
                 ],
                 $exception->status()
             );
@@ -99,26 +105,47 @@ final class WhatsAppClient
     private function typedResult(ApiResponse $response): MessageResult
     {
         $body = $response->body();
-        $result = $body['data']['attributes']['data']['results'][0] ?? null;
+        $result = ArrayReader::get($body, 'data.attributes.data.results.0');
 
         if (! is_array($result)) {
             return MessageResult::failed([
-                'message' => 'The typed WhatsApp response did not include a recipient result.',
-                'details' => $response->body(),
+                'message' => ClientMessages::message(ClientMessages::FAILURE_RESULT_MISSING),
+                'status' => $response->status(),
             ], $response->status());
         }
 
-        $wamid = $result['whatsapp_message_id'] ?? null;
-        $status = $result['status'] ?? null;
+        $wamid = ArrayReader::get($result, 'whatsapp_message_id');
+        $status = ArrayReader::get($result, 'status');
 
         if ($status === 'sent' && is_string($wamid) && str_starts_with($wamid, 'wamid.') && $wamid !== 'wamid.') {
             return MessageResult::sent($result, $response->status());
         }
 
         return MessageResult::failed([
-            'message' => 'The WhatsApp template was not delivered to the recipient.',
+            'message' => ClientMessages::message(ClientMessages::FAILURE_NOT_DELIVERED),
             'status' => $status,
-            'details' => $result,
         ], $response->status());
+    }
+
+    /**
+     * Maps an upstream failure to the catalog key of its client copy.
+     */
+    private function failureKey(ApiException $exception): string
+    {
+        return match (true) {
+            $this->isInsufficientCredits($exception) => ClientMessages::FAILURE_INSUFFICIENT_CREDITS,
+            $exception->status() === 429 => ClientMessages::FAILURE_RATE_LIMITED,
+            $exception->status() === 0 => ClientMessages::FAILURE_TRANSPORT,
+            default => ClientMessages::FAILURE_SEND_FAILED,
+        };
+    }
+
+    /**
+     * Tells whether the upstream rejected a billed send for lack of credits.
+     */
+    private function isInsufficientCredits(ApiException $exception): bool
+    {
+        return $exception->status() === InsufficientCreditsException::STATUS
+            && $exception->errorCode() === InsufficientCreditsException::UPSTREAM_CODE;
     }
 }
