@@ -353,9 +353,10 @@ realtime events, on tab focus, on reconnect and at a throttled interval.
 ```
 
 Sends the abort template to the contacts, deletes the upstream emergency and
-clears the session snapshot. The abort template is unbilled, so a WhatsApp
-failure is reported in `failures` but does not roll back the deletion.
-`deleted: true` means the upstream delete succeeded.
+clears the session snapshot. A WhatsApp failure is reported in `failures` and
+does not roll back the deletion; endpoint and billing behavior live in
+[WhatsApp payloads](whatsapp-payloads.md). `deleted: true` means the upstream
+delete succeeded.
 
 `403 emergency_forbidden` when the ID does not belong to the session code.
 `404 emergency_not_found` when no active emergency matches.

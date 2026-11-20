@@ -58,6 +58,9 @@ final class Endpoints
         return sprintf('/v2/emergency/qr/%s/active', rawurlencode($code));
     }
 
+    /**
+     * @deprecated Use whatsappEmergencyAbort() instead.
+     */
     public static function whatsappTemplates(): string
     {
         return '/v2/whatsapp/templates/send';
@@ -71,6 +74,11 @@ final class Endpoints
     public static function whatsappEmergencySimulacrum(): string
     {
         return '/v2/whatsapp/templates/emergency/simulacrum';
+    }
+
+    public static function whatsappEmergencyAbort(): string
+    {
+        return '/v2/whatsapp/templates/emergency/abort';
     }
 
     public static function creditSummary(string $code): string

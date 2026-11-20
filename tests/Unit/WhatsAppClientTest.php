@@ -72,6 +72,96 @@ final class WhatsAppClientTest extends TestCase
         ], $call['body']['recipients']);
     }
 
+    public function test_it_sends_one_abort_recipient_to_the_typed_endpoint(): void
+    {
+        $api = new FakeApiClient(fn (): ApiResponse => new ApiResponse(200, $this->fixture('responses/typed-abort.json')));
+        $client = new WhatsAppClient($api);
+
+        $result = $client->sendAbort('573001234567', ['user_name' => 'Ada Lovelace'], 'EMG1');
+
+        self::assertTrue($result->success);
+        self::assertSame('wamid.abort1', $result->messageId());
+
+        $call = $api->callsTo('POST', 'emergency/abort')[0];
+
+        self::assertSame('/v2/whatsapp/templates/emergency/abort', $call['path']);
+        self::assertSame('EMG1', $call['body']['emergency_id']);
+        self::assertSame([
+            [
+                'phone' => '573001234567',
+                'variables' => ['user_name' => 'Ada Lovelace'],
+            ],
+        ], $call['body']['recipients']);
+    }
+
+    public function test_a_200_with_a_failed_abort_result_is_a_failed_message(): void
+    {
+        $body = $this->fixture('responses/typed-abort.json');
+        $body['data']['attributes']['data']['results'][0]['status'] = 'failed';
+        $body['data']['attributes']['data']['results'][0]['whatsapp_message_id'] = null;
+
+        $api = new FakeApiClient(fn (): ApiResponse => new ApiResponse(200, $body));
+        $client = new WhatsAppClient($api);
+
+        $result = $client->sendAbort('573001234567', ['user_name' => 'Ada Lovelace'], 'EMG1');
+
+        self::assertFalse($result->success);
+        self::assertSame('failed', $result->error['status']);
+        self::assertSame(
+            ClientMessages::message(ClientMessages::FAILURE_NOT_DELIVERED),
+            $result->error['message']
+        );
+    }
+
+    public function test_a_200_without_a_nested_abort_result_is_a_failed_message(): void
+    {
+        $api = new FakeApiClient(fn (): ApiResponse => new ApiResponse(200, ['data' => ['attributes' => []]]));
+        $client = new WhatsAppClient($api);
+
+        $result = $client->sendAbort('573001234567', ['user_name' => 'Ada Lovelace'], 'EMG1');
+
+        self::assertFalse($result->success);
+        self::assertSame(
+            ClientMessages::message(ClientMessages::FAILURE_RESULT_MISSING),
+            $result->error['message']
+        );
+    }
+
+    public function test_a_sent_abort_without_a_wamid_is_a_failed_message(): void
+    {
+        $body = $this->fixture('responses/typed-abort.json');
+        $body['data']['attributes']['data']['results'][0]['whatsapp_message_id'] = null;
+
+        $api = new FakeApiClient(fn (): ApiResponse => new ApiResponse(200, $body));
+        $client = new WhatsAppClient($api);
+
+        $result = $client->sendAbort('573001234567', ['user_name' => 'Ada Lovelace'], 'EMG1');
+
+        self::assertFalse($result->success);
+        self::assertNull($result->messageId());
+        self::assertSame(
+            ClientMessages::message(ClientMessages::FAILURE_NOT_DELIVERED),
+            $result->error['message']
+        );
+    }
+
+    public function test_an_abort_without_credits_reports_the_catalog_copy(): void
+    {
+        $api = new FakeApiClient(static fn (): ApiResponse => throw ApiException::fromResponse(
+            new ApiResponse(402, ['errors' => [['code' => 'INSUFFICIENT_CREDITS']]]),
+        ));
+        $client = new WhatsAppClient($api);
+
+        $result = $client->sendAbort('573001234567', ['user_name' => 'Ada Lovelace'], 'EMG1');
+
+        self::assertFalse($result->success);
+        self::assertTrue($result->insufficientCredits);
+        self::assertSame(
+            ClientMessages::message(ClientMessages::FAILURE_INSUFFICIENT_CREDITS),
+            $result->error['message']
+        );
+    }
+
     public function test_a_200_with_a_failed_result_is_a_failed_message(): void
     {
         $body = $this->fixture('responses/typed-send.json');

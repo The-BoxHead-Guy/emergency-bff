@@ -26,6 +26,8 @@ final class WhatsAppClient
      * Sends the abort template payload.
      *
      * @param  array<string, mixed>  $payload
+     *
+     * @deprecated Use sendAbort() with the typed abort endpoint instead.
      */
     public function send(array $payload): MessageResult
     {
@@ -66,6 +68,14 @@ final class WhatsAppClient
     public function sendSimulacrum(string $phone, array $variables, string $emergencyId): MessageResult
     {
         return $this->sendTyped(Endpoints::whatsappEmergencySimulacrum(), $phone, $variables, $emergencyId);
+    }
+
+    /**
+     * @param  array<string, mixed>  $variables
+     */
+    public function sendAbort(string $phone, array $variables, string $emergencyId): MessageResult
+    {
+        return $this->sendTyped(Endpoints::whatsappEmergencyAbort(), $phone, $variables, $emergencyId);
     }
 
     /**

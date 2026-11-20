@@ -106,14 +106,42 @@ final class KernelTest extends TestCase
         self::assertSame(200, $aborted->status());
         self::assertSame($expected, $aborted->body()['emergency_id']);
         self::assertTrue($aborted->body()['deleted']);
+        self::assertCount(1, $this->client->callsTo('POST', 'whatsapp/templates/emergency/abort'));
+        self::assertCount(0, $this->client->callsTo('POST', 'whatsapp/templates/send'));
+
+        $abortBody = $this->client->callsTo('POST', 'whatsapp/templates/emergency/abort')[0]['body'];
+
+        self::assertSame($expected, $abortBody['emergency_id']);
+        self::assertSame('Ada Lovelace', $abortBody['recipients'][0]['variables']['user_name']);
 
         $current = $kernel->handle(new Request('GET', '/de-bff/emergency/current'));
         self::assertFalse($current->body()['active']);
     }
 
-    public function test_the_simulacrum_route_creates_an_active_emergency(): void
+    public function test_a_typed_abort_failure_still_returns_200_and_deletes(): void
     {
-        $kernel = $this->kernel();
+        $kernel = $this->kernel(self::defaultClient(
+            abortFailure: ApiException::fromResponse(
+                new ApiResponse(402, self::fixture('responses/insufficient-credits.json')),
+            ),
+        ));
+        $token = $this->csrfToken($kernel);
+        $session = $kernel->handle($this->json('POST', '/de-bff/emergency/session', ['code' => 'DABC12'], $token));
+        $token = $session->body()['csrf_token'];
+
+        $activated = $kernel->handle($this->json('POST', '/de-bff/emergency/activate', [], $token));
+        self::assertSame(201, $activated->status());
+
+        $aborted = $kernel->handle($this->json('DELETE', "/de-bff/emergency/{$activated->body()['emergency_id']}", [], $token));
+
+        self::assertSame(200, $aborted->status());
+        self::assertTrue($aborted->body()['deleted']);
+        self::assertCount(1, $aborted->body()['failures']);
+        self::assertCount(1, $this->client->callsTo('POST', 'whatsapp/templates/emergency/abort'));
+    }
+
+    public function test_the_simulacrum_route_creates_an_active_emergency(): void
+    {        $kernel = $this->kernel();
         $token = $this->csrfToken($kernel);
         $session = $kernel->handle($this->json('POST', '/de-bff/emergency/session', ['code' => 'DABC12'], $token));
 
@@ -1295,11 +1323,11 @@ final class KernelTest extends TestCase
         );
     }
 
-    private static function defaultClient(string|int $emergencyId = 'EMG1'): FakeApiClient
+    private static function defaultClient(string|int $emergencyId = 'EMG1', ?ApiException $abortFailure = null): FakeApiClient
     {
         $active = null;
 
-        return new FakeApiClient(function (string $method, string $path, ?array $body) use (&$active, $emergencyId): ApiResponse {
+        return new FakeApiClient(function (string $method, string $path, ?array $body) use (&$active, $emergencyId, $abortFailure): ApiResponse {
             if ($method === 'GET' && str_ends_with($path, '/exists')) {
                 return str_contains($path, 'DABC12') || str_contains($path, 'A12345')
                     ? new ApiResponse(200, ['data' => ['attributes' => ['exists' => true]]])
@@ -1325,6 +1353,10 @@ final class KernelTest extends TestCase
             }
 
             if ($method === 'POST' && str_contains($path, 'whatsapp/templates/emergency/')) {
+                if ($abortFailure !== null && str_contains($path, 'emergency/abort')) {
+                    throw $abortFailure;
+                }
+
                 return new ApiResponse(200, self::fixture('responses/typed-send.json'));
             }
 

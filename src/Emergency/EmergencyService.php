@@ -219,8 +219,10 @@ final class EmergencyService
             $identity->code,
             $profile,
             $responders,
-            fn (array $contact, array $personalInfo): MessageResult => $this->whatsApp->send(
-                $this->payloads->buildAbortPayload($contact, $personalInfo),
+            fn (array $contact, array $personalInfo): MessageResult => $this->sendAbortToResponder(
+                $contact,
+                $personalInfo,
+                $activeId,
             ),
             billed: false,
         );
@@ -240,6 +242,27 @@ final class EmergencyService
             failures: $failures,
             snapshot: ['deleted' => true],
         );
+    }
+
+    /**
+     * Sends the typed abort message unless the profile has no usable name.
+     *
+     * @param  array<string, mixed>  $contact
+     * @param  array<string, mixed>  $personalInfo
+     */
+    private function sendAbortToResponder(array $contact, array $personalInfo, string $emergencyId): MessageResult
+    {
+        $variables = $this->payloads->buildAbortVariables(
+            (string) (ArrayReader::get($personalInfo, 'full_name') ?? ''),
+        );
+
+        if ($variables['user_name'] === '') {
+            return MessageResult::failed([
+                'message' => ClientMessages::message(ClientMessages::FAILURE_SEND_FAILED),
+            ]);
+        }
+
+        return $this->whatsApp->sendAbort(Responder::phoneFromContact($contact), $variables, $emergencyId);
     }
 
     /**

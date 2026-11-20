@@ -7,6 +7,7 @@ namespace DataEmergencia\EmergencyBff\Tests\Unit;
 use DataEmergencia\EmergencyBff\Api\EmergencyRepository;
 use DataEmergencia\EmergencyBff\Api\ProfileRepository;
 use DataEmergencia\EmergencyBff\Api\WhatsAppClient;
+use DataEmergencia\EmergencyBff\Emergency\EmergencyResult;
 use DataEmergencia\EmergencyBff\Emergency\EmergencyService;
 use DataEmergencia\EmergencyBff\Emergency\Exception\AlreadyActiveEmergencyException;
 use DataEmergencia\EmergencyBff\Emergency\Exception\ForbiddenEmergencyException;
@@ -433,7 +434,7 @@ final class EmergencyServiceTest extends TestCase
         }
     }
 
-    public function test_the_abort_path_keeps_fanning_out_after_a_legacy_402(): void
+    public function test_the_abort_path_keeps_fanning_out_after_a_typed_402(): void
     {
         $sends = 0;
         $client = $this->client(
@@ -463,7 +464,8 @@ final class EmergencyServiceTest extends TestCase
             'La cuenta no tiene créditos suficientes',
             json_encode($result->failures, JSON_THROW_ON_ERROR)
         );
-        self::assertCount(2, $client->callsTo('POST', 'whatsapp/templates/send'));
+        self::assertCount(2, $client->callsTo('POST', 'whatsapp/templates/emergency/abort'));
+        self::assertCount(0, $client->callsTo('POST', 'whatsapp/templates/send'));
         self::assertCount(1, $client->callsTo('DELETE', '/v2/emergency/EMG1'));
     }
 
@@ -489,20 +491,107 @@ final class EmergencyServiceTest extends TestCase
         try {
             $service->abort(Identity::fromCode('DABC12'), 'EMG1');
         } finally {
+            self::assertCount(0, $client->callsTo('POST', 'whatsapp/templates/emergency/abort'));
+            self::assertCount(0, $client->callsTo('POST', 'whatsapp/templates/send'));
             self::assertCount(0, $client->callsTo('DELETE', '/v2/emergency/'));
         }
     }
 
-    public function test_it_sends_abort_messages_and_deletes_the_emergency(): void
+    public function test_it_sends_typed_abort_messages_and_deletes_the_emergency(): void
     {
-        [$service, $client] = $this->service($this->client(active: ['emergency_id' => 'EMG1']));
+        $client = $this->client(active: ['emergency_id' => 'EMG1']);
 
-        $result = $service->abort(Identity::fromCode('DABC12'), 'EMG1');
+        $result = $this->abortWithClient($client);
 
         self::assertSame(['deleted' => true], $result->snapshot);
-        $payload = $client->callsTo('POST', 'whatsapp/templates/send')[0]['body'];
-        self::assertSame('emergency_status_aborting_v1', $payload['template']);
+        self::assertCount(1, $client->callsTo('POST', 'whatsapp/templates/emergency/abort'));
+
+        $body = $client->callsTo('POST', 'whatsapp/templates/emergency/abort')[0]['body'];
+
+        self::assertSame('EMG1', $body['emergency_id']);
+        self::assertSame([
+            [
+                'phone' => '573001234567',
+                'variables' => ['user_name' => 'Ada Lovelace'],
+            ],
+        ], $body['recipients']);
+        self::assertCount(0, $client->callsTo('POST', 'whatsapp/templates/send'));
         self::assertCount(1, $client->callsTo('DELETE', '/v2/emergency/EMG1'));
+    }
+
+    public function test_a_typed_abort_422_still_deletes_and_returns_deleted(): void
+    {
+        $client = $this->client(
+            whatsApp: static function (): never {
+                throw ApiException::fromResponse(new ApiResponse(422, ['message' => 'Invalid name']));
+            },
+            active: ['emergency_id' => 'EMG1'],
+        );
+
+        $result = $this->abortWithClient($client);
+
+        $this->assertAbortDeleted($result, $client);
+        self::assertSame(422, $result->failures[0]['status']);
+    }
+
+    public function test_a_failed_typed_abort_result_still_deletes_and_returns_deleted(): void
+    {
+        $body = $this->fixture('responses/typed-abort.json');
+        $body['data']['attributes']['data']['results'][0]['status'] = 'failed';
+        $body['data']['attributes']['data']['results'][0]['whatsapp_message_id'] = null;
+
+        $client = $this->client(
+            whatsApp: static fn (): ApiResponse => new ApiResponse(200, $body),
+            active: ['emergency_id' => 'EMG1'],
+        );
+
+        $result = $this->abortWithClient($client);
+
+        $this->assertAbortDeleted($result, $client);
+        self::assertSame(
+            ClientMessages::message(ClientMessages::FAILURE_NOT_DELIVERED),
+            $result->failures[0]['message']
+        );
+    }
+
+    public function test_an_abort_without_a_valid_wamid_still_deletes_and_returns_deleted(): void
+    {
+        $body = $this->fixture('responses/typed-abort.json');
+        $body['data']['attributes']['data']['results'][0]['whatsapp_message_id'] = 42;
+
+        $client = $this->client(
+            whatsApp: static fn (): ApiResponse => new ApiResponse(200, $body),
+            active: ['emergency_id' => 'EMG1'],
+        );
+
+        $result = $this->abortWithClient($client);
+
+        $this->assertAbortDeleted($result, $client);
+        self::assertSame(
+            ClientMessages::message(ClientMessages::FAILURE_NOT_DELIVERED),
+            $result->failures[0]['message']
+        );
+    }
+
+    public function test_a_blank_user_name_skips_the_typed_abort_send(): void
+    {
+        $profile = $this->fixture('responses/success.json');
+        $profile['data']['attributes']['data']['personal_info']['full_name'] = '   ';
+
+        $client = $this->client(
+            active: ['emergency_id' => 'EMG1'],
+            profile: $profile,
+        );
+
+        $result = $this->abortWithClient($client);
+
+        $this->assertAbortDeleted($result, $client);
+        self::assertSame(
+            ClientMessages::message(ClientMessages::FAILURE_SEND_FAILED),
+            $result->failures[0]['message']
+        );
+        self::assertCount(0, $client->callsTo('POST', 'whatsapp/templates/emergency/abort'));
+        self::assertCount(0, $client->callsTo('POST', 'whatsapp/templates/send'));
     }
 
     public function test_it_refreshes_and_resumes(): void
@@ -540,6 +629,20 @@ final class EmergencyServiceTest extends TestCase
     /**
      * @return array<string, mixed>
      */
+    private function abortWithClient(FakeApiClient $client): EmergencyResult
+    {
+        [$service] = $this->service($client);
+
+        return $service->abort(Identity::fromCode('DABC12'), 'EMG1');
+    }
+
+    private function assertAbortDeleted(EmergencyResult $result, FakeApiClient $client): void
+    {
+        self::assertSame(['deleted' => true], $result->snapshot);
+        self::assertCount(1, $result->failures);
+        self::assertCount(1, $client->callsTo('DELETE', '/v2/emergency/EMG1'));
+    }
+
     private function twoContactProfile(): array
     {
         $profile = $this->fixture('responses/success.json');

@@ -6,6 +6,27 @@ and [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-20
+
+### Added
+
+- The abort dispatch now uses the typed, billed
+  `POST /v2/whatsapp/templates/emergency/abort` endpoint with a `user_name`
+  variable. A `402` or any other send failure is recorded per recipient in
+  `failures` and the emergency is still deleted, so `DELETE /{id}` keeps its
+  `200` and `deleted: true` contract.
+
+### Deprecated
+
+- `WhatsAppClient::send()`, `WhatsAppPayloadBuilder::buildAbortPayload()`,
+  `WhatsAppPayloadBuilder::TEMPLATE_ABORT` and `Endpoints::whatsappTemplates()`
+  remain available for older consumers and are deprecated for the next minor.
+
+### Release
+
+- Next release is a pre-1.0 minor (`0.7.0`). The old generic send surface is
+  not removed in this release.
+
 ## [0.6.0] - 2026-11-20
 
 ### Changed

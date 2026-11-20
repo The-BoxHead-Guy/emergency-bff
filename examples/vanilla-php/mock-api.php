@@ -179,7 +179,7 @@ if ($method === 'GET' && preg_match('#^/v2/credits/([^/]+)$#', $path, $matches) 
 }
 
 // Current, billed typed templates.
-if ($method === 'POST' && preg_match('#^/v2/whatsapp/templates/emergency/(activation|simulacrum)$#', $path, $matches) === 1) {
+if ($method === 'POST' && preg_match('#^/v2/whatsapp/templates/emergency/(activation|simulacrum|abort)$#', $path, $matches) === 1) {
     $payload = $body();
     file_put_contents(
         $whatsAppLog,

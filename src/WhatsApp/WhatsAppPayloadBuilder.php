@@ -14,12 +14,17 @@ use DataEmergencia\EmergencyBff\Support\ArrayReader;
  */
 final class WhatsAppPayloadBuilder
 {
+    /**
+     * @deprecated Use buildAbortVariables() with the typed abort endpoint instead.
+     */
     public const TEMPLATE_ABORT = 'emergency_status_aborting_v1';
 
     public const DEFAULT_LANGUAGE = 'en';
 
     /**
      * @return array<string, mixed>
+     *
+     * @deprecated Use buildAbortVariables() with the typed abort endpoint instead.
      */
     public function buildAbortPayload(array $contact, array $personalInfo): array
     {
@@ -33,6 +38,14 @@ final class WhatsAppPayloadBuilder
                 ],
             ],
         ]);
+    }
+
+    /**
+     * @return array{user_name: string}
+     */
+    public function buildAbortVariables(string $userName): array
+    {
+        return ['user_name' => $this->sanitizeName($userName)];
     }
 
     /**

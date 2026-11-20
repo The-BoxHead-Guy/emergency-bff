@@ -30,6 +30,25 @@ final class WhatsAppPayloadBuilderTest extends TestCase
         self::assertSame($this->fixture('payloads/simulacrum.json'), $variables);
     }
 
+    public function test_it_builds_the_abort_variables_exactly(): void
+    {
+        $variables = $this->builder->buildAbortVariables('Ada Lovelace');
+
+        self::assertSame($this->fixture('payloads/abort-variables.json'), $variables);
+    }
+
+    public function test_it_sanitizes_the_abort_variables(): void
+    {
+        $variables = $this->builder->buildAbortVariables("  Grace   <b>Hopper</b> ");
+
+        self::assertSame(['user_name' => 'Grace Hopper'], $variables);
+    }
+
+    public function test_it_keeps_blank_abort_variables_empty(): void
+    {
+        self::assertSame(['user_name' => ''], $this->builder->buildAbortVariables('   '));
+    }
+
     public function test_it_builds_the_abort_payload_exactly(): void
     {
         $payload = $this->builder->buildAbortPayload(

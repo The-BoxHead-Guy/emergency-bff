@@ -111,10 +111,11 @@ Outcomes:
 `emergency_status_aborting_v1` to the same contacts, deletes the upstream
 emergency and clears the session snapshot.
 
-The abort template is unbilled, so a WhatsApp failure is reported in `failures`
-but does not roll back the deletion. An emergency that no longer exists returns
-`404 emergency_not_found`; one owned by another code returns
-`403 emergency_forbidden`.
+The abort template is sent through the typed abort endpoint; endpoint and
+billing behavior live in [WhatsApp payloads](whatsapp-payloads.md). A WhatsApp
+failure is reported in `failures` but does not roll back the deletion. An
+emergency that no longer exists returns `404 emergency_not_found`; one owned by
+another code returns `403 emergency_forbidden`.
 
 ## 7. Resume
 

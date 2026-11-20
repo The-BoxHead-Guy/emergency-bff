@@ -34,11 +34,13 @@ Do not call an in-use contract "legacy". Unused and older-but-supported are
 different states:
 
 - **Current, billed**: typed
-  `/v2/whatsapp/templates/emergency/{activation,simulacrum}` sends and the
+  `/v2/whatsapp/templates/emergency/{activation,simulacrum,abort}` sends and the
   `/v2/credits/{code}` reads.
-- **Older contract, still supported**: `/v2/whatsapp/templates/send` (abort) and
-  `{code,message}` error bodies. The BFF still consumes them; they are not
-  deprecated and must not be removed without migrating the caller.
+- **Older contract, still supported**: `/v2/whatsapp/templates/send` and
+  `{code,message}` error bodies. The endpoint stays supported for older
+  consumers and is not deprecated. The BFF no longer uses the generic send for
+  abort; its unused client surface is deprecated and may be removed after the
+  deprecation window. `{code,message}` error bodies are still consumed.
 - **Unused fallbacks**: `body.attributes` / `body.data` credit envelopes. The
   current API does not emit them and they are safe to delete.
 - Before deleting anything, check for in-repo consumers. "Unused" and

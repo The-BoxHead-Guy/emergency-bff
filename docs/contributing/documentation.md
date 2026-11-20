@@ -8,8 +8,8 @@ exists for what the code cannot state about itself:
 - **What** the package provides: the HTTP contract, the responsibilities of the
   BFF versus the host, the guarantees of the emergency flow.
 - **Why** a decision was taken: the constraints behind the order of operations,
-  the same-origin policy, the refresh ownership limitation, the billing split
-  between typed and abort templates.
+  the same-origin policy, the refresh ownership limitation, and the non-breaking
+  abort billing choice.
 - **Process**: integration, activation, migration, upgrade and release steps.
 - **Guidelines**: rules an integrator must follow to use the package correctly.
 
